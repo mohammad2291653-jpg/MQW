@@ -1,0 +1,4 @@
+import {chromium} from '@playwright/test';
+const browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});const page=await context.newPage();const origin='http://localhost:3000',password='ScreenshotOnly-2026-Strong';
+const signup=await context.request.post(origin+'/api/auth',{headers:{Origin:origin},data:{action:'sign-up',email:`capture-${Date.now()}@mqw.test`,password,name:'تجربة'}});if(!signup.ok())throw new Error(await signup.text());
+try{await page.goto(origin+'/today');await page.getByRole('heading',{name:/تعلّم أقل عشوائية/}).waitFor();await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:'artifacts/today-mobile.png'});}finally{await context.request.delete(origin+'/api/account',{headers:{Origin:origin},data:{password}});await browser.close()}

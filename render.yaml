@@ -1,0 +1,31 @@
+# Private, single-instance MQW hosting. This file creates a NEW service only.
+# Existing services in the workspace are unrelated and must not be adopted.
+services:
+  - type: web
+    name: mqw
+    runtime: docker
+    repo: https://github.com/mohammad2291653-jpg/MQW
+    branch: main
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 30
+    disk:
+      name: mqw-private-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: MQW_DATA_DIR
+        value: /var/data/mqw
+      - key: MQW_OWNER_EMAIL
+        sync: false
+      - key: MQW_SETUP_TOKEN_HASH
+        sync: false

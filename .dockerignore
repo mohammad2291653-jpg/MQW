@@ -1,0 +1,33 @@
+# Send only files explicitly used by the Dockerfile.
+*
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!next.config.ts
+!tsconfig.json
+!src/
+!src/**
+!public/
+!public/**
+!scripts/
+!scripts/start-production.mjs
+!scripts/backup.mjs
+
+# Defense in depth if files are accidentally created inside an allowed folder.
+**/.env
+**/.env.*
+**/*.sqlite
+**/*.sqlite-*
+**/*.db
+**/*.db-*
+**/*.pem
+**/*.key
+**/node_modules
+**/.git
+**/.next
+**/data
+**/test-results
+**/playwright-report
+**/artifacts
+**/*.log
