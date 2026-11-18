@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1
-# Node 24 supplies node:sqlite. Keep build dependencies out of the runtime image.
+# Node 24 supports the SQLite development fallback and async PostgreSQL runtime.
+# Keep build dependencies and migration credentials out of the runtime image.
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS base
 
 FROM base AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1 MQW_DATA_DIR=/tmp/mqw-build-data
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    MQW_STORAGE_BACKEND=sqlite \
+    MQW_DATA_DIR=/tmp/mqw-build-data
 COPY package.json package-lock.json ./
 # Copy an explicit source allowlist, never the working tree's data or .env files.
 COPY next.config.ts tsconfig.json ./
@@ -35,10 +38,12 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=10000 \
-    MQW_DATA_DIR=/var/data/mqw
+    MQW_STORAGE_BACKEND=postgres
 COPY --chown=node:node --from=build /runtime/ ./
-# Startup initializes a mounted directory when necessary, then permanently drops
-# to uid/gid 1000 before starting Next. The application never runs as root.
+# No persistent volume or schema migration is required by the remote runtime.
+# The restricted runtime URL is supplied only at startup, never as a build ARG.
+# Startup drops to uid/gid 1000 before Next; the optional SQLite fallback alone
+# initializes a mounted directory when explicitly selected by the operator.
 USER root
 EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \

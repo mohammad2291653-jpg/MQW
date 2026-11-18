@@ -10,3 +10,4 @@ playwright-report/
 data-production/
 # Personal source specifications remain in the owner's private workspace.
 docs/[1-5]-MQW_*.md
+supabase/.temp/

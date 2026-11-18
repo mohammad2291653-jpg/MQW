@@ -1,5 +1,7 @@
--- Run ONLY against a disposable local Supabase database after the proposal
--- migration. Every fixture is rolled back. Requires a database owner connection.
+-- ARCHIVED NORMALIZED PROPOSAL ONLY: supabase/proposals/normalized_schema.sql.
+-- These are not tests of the current private PostgreSQL runtime.
+-- Run ONLY against a disposable database after manually applying that proposal.
+-- Every fixture is rolled back. Requires a database owner connection.
 \set ON_ERROR_STOP on
 begin;
 

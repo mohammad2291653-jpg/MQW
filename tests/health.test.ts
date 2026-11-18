@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "mqw-health-"));
 process.env.MQW_DATA_DIR = dir;
+delete process.env.MQW_DATABASE_URL;
+process.env.MQW_STORAGE_BACKEND = "sqlite";
 const route =
   require("../src/app/api/health/route") as typeof import("../src/app/api/health/route");
 after(() => rmSync(dir, { recursive: true, force: true }));
@@ -16,10 +18,14 @@ test("readiness checks the real database without returning private details or cr
   const { db } =
     require("../src/lib/server/db") as typeof import("../src/lib/server/db");
   assert.equal(
-    (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n,
+    (
+      (await db.prepare("SELECT COUNT(*) AS n FROM users").get()) as {
+        n: number;
+      }
+    ).n,
     0,
   );
-  db.close();
+  await db.close();
   const unavailable = await route.GET();
   assert.equal(unavailable.status, 503);
   assert.deepEqual(await unavailable.json(), {

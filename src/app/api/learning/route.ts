@@ -6,9 +6,9 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     checkOrigin(request);
-    const user = requireUser(request);
+    const user = await requireUser(request);
     const body = await readBody(request);
-    return json(transaction(() => learningAction(user.id, body)));
+    return json(await transaction(async () => await learningAction(user.id, body)));
   } catch (error) {
     return fail(error);
   }

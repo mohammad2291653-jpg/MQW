@@ -1,3 +1,4 @@
+// ARCHIVED NORMALIZED PROPOSAL ONLY, not the active MQW runtime migration.
 // Optional executable policy smoke test. Uses real embedded PostgreSQL through
 // PGlite, but stubs Supabase's auth/storage infrastructure. This does not verify
 // Supabase HTTP APIs, JWT validation, Storage delivery or any runtime adapter.
@@ -35,12 +36,12 @@ const path = require('node:path');
         language sql immutable as $$select string_to_array(name,'/')$$;
     `);
     const migration = fs.readFileSync(path.join(__dirname,
-      '../migrations/202611180001_mqw_proposed_schema.sql'), 'utf8');
+      '../proposals/normalized_schema.sql'), 'utf8');
     await database.exec(migration);
     const checks = fs.readFileSync(path.join(__dirname, 'isolation.sql'), 'utf8')
       .split('\n').filter(line => !line.startsWith('\\')).join('\n');
     await database.exec(checks);
-    console.log('PASS: proposed schema applied; A/B/anonymous SQL isolation checks passed and rolled back.');
+    console.log('PASS: archived normalized proposal applied; A/B/anonymous SQL isolation checks passed and rolled back.');
     console.log('Scope: embedded PostgreSQL with auth/storage stubs; full Supabase integration remains untested.');
   } finally {
     await database.close();

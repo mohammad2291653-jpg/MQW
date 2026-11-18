@@ -8,7 +8,7 @@ const headers = {
 export async function GET() {
   try {
     const { db } = await import("@/lib/server/db");
-    db.prepare("SELECT 1 FROM users LIMIT 1").get();
+    await db.prepare("SELECT 1 FROM users LIMIT 1").get();
     return Response.json({ data: { status: "ok" } }, { headers });
   } catch {
     return Response.json(

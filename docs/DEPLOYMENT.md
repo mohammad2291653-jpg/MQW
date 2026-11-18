@@ -1,100 +1,98 @@
-# Running MQW
+# Running and hosting MQW
 
-The application currently runs on a local/private **Node.js + SQLite** backend. The optional Supabase folder is schema preparation; setting a Supabase URL alone will not switch storage. No production service or paid provider is created by these instructions.
+The selected hosting path is **Render Free + Supabase Free private PostgreSQL**. Local SQLite remains supported. The Free Supabase project and its private schema exist; hosted application pooler connectivity and restart verification are still separate gates. Neither schema creation nor a successful build alone proves the application is live. The current `render.yaml` configures Free compute, PostgreSQL storage and no persistent disk.
 
-## Requirements
+## Local development
 
-- Node.js 24 (the runtime uses `node:sqlite`).
-- npm and writable private storage.
-- A modern browser. Microphone access normally requires HTTPS or a trusted localhost context.
-
-From the repository directory:
+Requirements: Node.js 24, npm, and a modern browser. Both adapters run through Node 24; local mode uses its built-in `node:sqlite`.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`, create a personal account with an email and a password, and use the app. This is real local account storage; it does not verify ownership of an email address. There is no configured email delivery service. A password-reset screen must not claim an email was sent when delivery is unavailable.
+Open `http://localhost:3000`. With no cloud settings, the app uses `./data/mqw.sqlite` and private files under the same data directory. `MQW_DATA_DIR` can select a different absolute private path. Development listens on `0.0.0.0`, so use a trusted environment or firewall. Microphone capture requires a secure browser context such as HTTPS or trusted localhost.
 
-The development script listens on `0.0.0.0`; use a trusted environment or restrict access with a firewall. Access from another device over a plain LAN address may not allow microphone recording. Do not solve this by disabling browser security.
+There are no preloaded personal results. Email/password authentication is real application storage, but email ownership verification and reset-email delivery are not configured. Do not claim an email was sent when that service is unavailable.
 
-The default private data directory is `./data`. To select a different persistent location before starting:
+## Choose the storage backend explicitly
+
+| Setting | Local SQLite | PostgreSQL cloud |
+| --- | --- | --- |
+| `MQW_STORAGE_BACKEND` | `sqlite`, or omitted without a database URL | Set explicitly to `postgres` |
+| `MQW_DATA_DIR` | Private durable SQLite/audio directory | Any local working directory is scratch, not the source of durable records/audio |
+| `MQW_DATABASE_URL` | Not used | Server-only restricted-role connection string |
+| `MQW_DATABASE_CA_CERT` | Not used | Optional CA bundle for verified database TLS |
+
+Set `MQW_STORAGE_BACKEND=postgres` on a free ephemeral host. If its database secret is missing, the service must fail closed rather than silently selecting local SQLite. A Supabase project API URL or publishable key is not a PostgreSQL connection string. Changing backends does **not** import, merge or erase the previous backend's data automatically.
+
+Cloud mode retains the application's owner email/password, scrypt hashes and opaque HttpOnly session cookies. It does not use Supabase Auth/JWTs. Durable records and audio bytes live in the private `mqw_private` schema. Audio therefore consumes the **500 MB database allowance**, not Supabase's separate Storage allowance. Upload caps remain 20 MiB per recording and 200 MiB per account.
+
+## Prepare the PostgreSQL runtime
+
+The active CLI-generated migration chain is `supabase/migrations/20261118155145_runtime_private_store.sql`, followed by `supabase/migrations/20261118155344_voice_ownership_index.sql`. The second adds the composite voice-ownership index identified during advisor review. Both have been applied to the inspected Free project. `supabase/runtime/schema.sql` represents their combined state; do not edit an applied migration to fold in a later change. The archived `supabase/proposals/normalized_schema.sql` is a different earlier design and must not be applied as a runtime migration.
+
+Use a migration administrator to apply the reviewed migration to the intended inspected project. Keep schema administration separate from the runtime connection. The migration creates `mqw_app` without login or bypass/admin privileges; the operator assigns its strong private password and enables LOGIN separately. Do not put passwords into tracked SQL files or use the administrative `postgres` login as application runtime.
+
+Use the project's shared Supavisor **Session Pooler, port 5432**, for a persistent Node service on IPv4. The custom username is `mqw_app.<PROJECT-REF>`. Copy the actual pooler hostname from Connect or the authenticated Management API; a pooler cluster index cannot be inferred from region. Keep TLS certificate verification enabled. Do not enable the paid IPv4 add-on or dedicated paid pooler.
+
+The seven private tables enable and force RLS. Records, idempotency and audio use transaction-local `mqw.user_id` established from the verified session; pre-auth account/session/setup operations are restricted to the trusted backend role. Browser Data API roles have no private-schema access. See [runtime details](../supabase/runtime/README.md) and [architecture](ARCHITECTURE.md).
+
+Remote database checks confirmed all seven FORCE-RLS tables and denied anonymous/authenticated schema usage; the security advisor reported no findings at that checkpoint. This does not replace restricted application-login, API or hosting verification.
+
+The Supabase CLI changes between versions. Discover actual commands and flags with `--help`; generate future migration filenames with `supabase migration new`. CLI v3 defaults to local targets, so remote application and confirmation must be explicit. Never run reset commands against a hosted personal database to repair a configuration issue.
+
+## Guard owner setup and production startup
+
+Configure server-side `MQW_OWNER_EMAIL`, `MQW_SETUP_TOKEN_HASH`, and exact HTTPS `MQW_APP_ORIGIN` (or the documented `RENDER_EXTERNAL_URL` fallback). Generate local invitation material with `scripts/prepare-owner-setup.mjs` according to its help; generated files remain in ignored `.mqw-operator/`. Do not print, commit or share the setup token publicly. There is no generated/default account password: the owner chooses one through the private setup page.
+
+Registration consumes the one-use invitation. Deleting the account does not make that invitation reusable; reinitialization needs a rotated setup token. `MQW_OWNER_EMAIL` alone does not prove email ownership or replace the invitation/password checks.
 
 ```bash
-MQW_DATA_DIR=/absolute/private/path/mqw-data npm run dev
+npm run build
+npm start
 ```
 
-`MQW_DATA_DIR` contains the SQLite database and private asset files. Never use a public/static directory for it, and do not put it in git. Changing this path points the app at a different database; it is not a data migration.
+`npm start` loads an ignored `.env.production.local` when present and runs the guarded launcher. Configure production values through private host environment bindings. `MQW_LOCAL_PREVIEW=1` is only for trusted local testing, not a public-hosting workaround.
 
-For an owner-only instance, set `MQW_OWNER_EMAIL` to your own normalized email address before registration. For example, use your host's private environment settings or pass it when starting the local process. New registrations with another email are rejected. This does not send email verification or remove accounts created before the guard was set. Do not treat it as a substitute for a strong password, TLS, or account-isolation checks.
+The Docker image uses Node 24, drops application privileges to uid 1000, binds `0.0.0.0:$PORT`, and forwards shutdown signals. `/api/health` checks readiness without exposing account or configuration details. Private specs, environment files, data, invitations and test artifacts are excluded from the image.
 
-## Verification
+## Free Render configuration
+
+Use a new web service on the **Free** compute plan, without a persistent disk, paid IPv4 add-on, paid database, or adopted business service. The repository's `render.yaml` is this free configuration: Docker, `/api/health`, explicit PostgreSQL, private owner/database bindings and automatic deploys off. Verify the intended reviewed source branch when creating the service.
+
+Render Free can sleep after 15 minutes without incoming traffic and may take about a minute to resume. Its local filesystem is ephemeral and may disappear on sleep, restart or redeployment; PostgreSQL mode must keep no durable application data there. Free quotas can suspend service or builds when exhausted. Supabase Free can also pause after inactivity and has no included automatic-backup promise. These are bounded free services, not unlimited availability.
+
+A static-site export cannot run the authenticated Node API. Do not deploy SQLite mode to a free ephemeral host and describe it as durable. A local SQLite deployment is possible only with separately selected persistent storage, which is outside the owner's current free-only hosting choice.
+
+## Verification and release evidence
 
 ```bash
 npm run typecheck
 npm test
 npm run build
-```
-
-Browser tests, when present, run with:
-
-```bash
 npx playwright install chromium
 npm run test:e2e
 ```
 
-Installing a desktop browser does not replace manual or device-backed iPhone Safari and installed-PWA testing. Review the root README for the actual checks completed in this build and any remaining limitations.
-
-## A safe single-instance hosting shape
-
-The production Dockerfile and guarded launcher require owner email, a SHA-256 setup-token hash and an HTTPS application origin (or documented Render URL fallback). Generate private invitation material with `node scripts/prepare-owner-setup.mjs owner@example.com`; output stays in the ignored `.mqw-operator/` directory. There is no generated/default password. The owner chooses one through the private setup link. A consumed invitation cannot be reused after account deletion.
-
-`render.yaml` proposes a NEW `0.5c-512mb` service in Frankfurt with a 1 GB disk at `/var/data`, `MQW_DATA_DIR=/var/data/mqw`, one instance, health checks and automatic deploys off. Current listed base cost is $7/month compute plus $0.25/GB/month disk, before taxes/other usage; verify during provisioning. Original personal source documents and private runtime/operator files are excluded from Git and Docker.
-
-For this storage implementation, use one Node.js instance with a persistent private local filesystem, behind an HTTPS reverse proxy. Build with `npm run build`, then start with `npm start`. Production session cookies require HTTPS. Set `MQW_DATA_DIR` to the persistent volume path in the host's environment settings.
-
-Verify `/api/health`, actual owner-scoped writes and persistence across a real service/container restart before accepting deployment. A successful build is not a live deployment.
-
-The tested maintenance tool supports `node scripts/backup.mjs backup --source /var/data/mqw --destination /private/new-snapshot`, `verify --source SNAPSHOT` and `restore --source SNAPSHOT --destination NEW_OR_EMPTY_DIRECTORY`. Run as uid 1000 in the container and stop the app for restore. It checks SQLite integrity, foreign keys, audio references and hashes, preserves invitation replay prevention and invalidates old sessions after restore. It refuses to overwrite existing data. Backup scheduling, off-site location and retention remain explicit operational decisions.
-
-Do not deploy the current SQLite backend into ephemeral serverless storage, a static-site host, a multi-instance autoscaling pool, or a shared network filesystem without a specific SQLite-compatible architecture. Otherwise data can disappear or different requests can see different databases. A Next.js static export cannot host the authenticated API.
-
-Before exposing it outside a trusted environment:
-
-1. Set `MQW_OWNER_EMAIL` to restrict account creation to the intended owner, and verify the guard in the deployed environment. Review any accounts created before it was enabled.
-2. Configure HTTPS, a fixed intended origin and a trustworthy reverse proxy. Confirm cookies, Origin checks and password flows through that proxy.
-3. Put the data volume outside application releases and public assets; restrict filesystem and backup access.
-4. Decide retention and backups. Test restore together with deletion handling. A backup is another copy of private data.
-5. Add real email/reset delivery if required. Never issue browser-visible reset tokens to unauthenticated callers or claim delivery without SMTP/service configuration.
-6. Review resource limits, request rate limiting, storage capacity, audio quotas and operational logging.
-7. Run the complete account-isolation, privacy, persistence and device acceptance suite against that deployment.
-
-No domain, region, provider price or backup policy has been chosen by this repository. Deployment authorization does not make an unconfigured provider integration exist.
-
-## Optional local Supabase schema review
-
-This is for a disposable schema-test environment. It does **not** connect the Next.js app to Supabase, and it does not migrate SQLite records.
-
-With the Supabase CLI, Docker, and `psql` installed, run from the repository root:
+Run checks appropriate to the changed backend. The recorded pre-conversion SQLite/browser baseline is not an automatic pass for PostgreSQL. The runtime SQL template has independently passed 45 isolated PGlite PostgreSQL role/RLS/ownership/cascade checks:
 
 ```bash
-supabase start
-supabase db reset
-psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -v ON_ERROR_STOP=1 -f supabase/tests/isolation.sql
+MQW_PGLITE_MODULE=/absolute/path/to/node_modules/@electric-sql/pglite node scripts/test-postgres-rls.mjs
 ```
 
-`supabase db reset` destroys the local Supabase database state. Do not adapt this command to a production database. The fixture test must run only against disposable local data; it inserts artificial users and rolls back its transaction.
+That runner accesses no hosted project or credentials. Remote acceptance separately requires restricted-role connectivity, absence of browser Data API access, A/B account/audio isolation, idempotent lesson/review/palace persistence, export/delete and a real service restart with preserved data. A build trigger or healthy database does not establish a live application; confirm the deploy reaches its terminal live state and exercise it.
 
-The proposed migration separates published lesson presentation from private answer keys, constrains child-owner relationships, enables RLS, and creates private audio policies. It intentionally does not grant ordinary clients write access to derived learning evidence.
+The current local regression checkpoint passed 37 SQLite/async-repository tests, nine Chromium journeys and one dedicated cache-reproduction browser check. A separate synthetic loopback-only application smoke passed against real local PostgreSQL 17.12 with CA/SAN-verified TLS and restricted `mqw_app`: concurrent lesson start/submission deduplication, lessons/reviews, private five-locus palace reveal/rating, A/B isolation/context reset, 1 MiB + 5 byte audio playback/export, rollback and password-confirmed deletion cascades. The temporary server, data and credentials were removed. This proves local wire/adapter behavior, not a connection from the hosted application to Supabase or a live Render deployment.
 
-A real Supabase transition still needs a runtime adapter, email/auth configuration, transactional lesson/review/palace APIs, storage upload/download behavior, data conversion and reconciliation, and integration tests. None of those are activated by this schema file. Preserve content versions and original event timestamps during any future migration; never synthesize historical attempts from summary scores.
+Chromium mobile layouts and axe checks do not certify physical iPhone Safari, installed PWA, microphone interruption or all assistive-technology behavior. Record checks not run instead of reporting universal device support.
 
-For a lightweight PostgreSQL policy smoke test without Docker, the repository also includes a PGlite runner. Install its optional dependency outside the application, then run:
+## Backups and restoration
 
-```bash
-npm install --prefix /tmp/mqw-sql-test @electric-sql/pglite
-MQW_PGLITE_MODULE=/tmp/mqw-sql-test/node_modules/@electric-sql/pglite node supabase/tests/embedded-isolation.cjs
-```
+`scripts/backup.mjs` is **SQLite-only**. It creates a native online SQLite backup plus audio, verifies integrity/hashes, and restores into a new/empty directory. Run it as the application's uid and keep the snapshot private. It is not a PostgreSQL backup tool.
 
-This runner uses embedded PostgreSQL and minimal Supabase auth/storage stubs. It has passed in this workspace, including the complete migration and A/B/anonymous SQL fixtures. It is not a full Supabase integration test and does not test network/storage APIs or the Next.js runtime adapter.
+PostgreSQL needs a database-native offsite backup and tested restore procedure. The current cloud audio is part of the database, so include `voice_blobs` with auth records, snapshots, consumed invitations and event history. Restore must revoke old sessions and preserve invitation replay protection. No scheduled backup, retention policy or hosted restore test is silently claimed. A live deletion also does not erase independent backups immediately.
+
+## Archived proposal checks
+
+`supabase/tests/embedded-isolation.cjs` and `supabase/tests/isolation.sql` test only `supabase/proposals/normalized_schema.sql`. The embedded runner creates an isolated engine and applies that archived proposal with minimal auth/storage stubs. It is not evidence for the current runtime adapter. Do not run its fixture SQL against the live application or the new runtime schema.

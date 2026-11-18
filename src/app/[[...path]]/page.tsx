@@ -18,7 +18,7 @@ export default async function Page({
     "reset-password",
   ].includes(path[0]);
   const cookieStore = await cookies();
-  const user = getUserByToken(cookieStore.get(COOKIE_NAME)?.value);
+  const user = await getUserByToken(cookieStore.get(COOKIE_NAME)?.value);
   if (!user && !isPublic) redirect("/sign-in");
   return <RouterView path={path} />;
 }

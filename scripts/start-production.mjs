@@ -85,35 +85,81 @@ if (
 const port = String(Number(configuredPort));
 process.env.PORT = port;
 
-const configuredDataDirectory = process.env.MQW_DATA_DIR || "/var/data/mqw";
-if (!isAbsolute(configuredDataDirectory)) {
-  stop("MQW_DATA_DIR must be an absolute path on a persistent private volume.");
+const storageBackend =
+  process.env.MQW_STORAGE_BACKEND ||
+  (process.env.MQW_DATABASE_URL ? "postgres" : "sqlite");
+if (!["sqlite", "postgres"].includes(storageBackend)) {
+  stop("MQW_STORAGE_BACKEND must be sqlite or postgres.");
 }
-const dataDirectory = resolve(configuredDataDirectory);
-if (dataDirectory === "/" || dataDirectory === appDirectory) {
-  stop("MQW_DATA_DIR must be a dedicated private subdirectory.");
+process.env.MQW_STORAGE_BACKEND = storageBackend;
+
+let dataDirectory;
+if (storageBackend === "postgres") {
+  if (!process.env.MQW_DATABASE_URL) {
+    stop("MQW_DATABASE_URL is required for PostgreSQL storage.");
+  }
+  let connection;
+  try {
+    connection = new URL(process.env.MQW_DATABASE_URL);
+  } catch {
+    stop("MQW_DATABASE_URL must be a valid PostgreSQL connection URL.");
+  }
+  if (
+    !["postgres:", "postgresql:"].includes(connection.protocol) ||
+    !connection.hostname
+  ) {
+    stop("MQW_DATABASE_URL must be a valid PostgreSQL connection URL.");
+  }
+  if (
+    ["disable", "no-verify"].includes(
+      (connection.searchParams.get("sslmode") || "").toLowerCase(),
+    ) ||
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0"
+  ) {
+    stop("PostgreSQL storage requires verified TLS; do not disable it.");
+  }
+  // db.ts enforces rejectUnauthorized:true, optionally with MQW_DATABASE_CA_CERT.
+  // Records and private audio are durable database rows. A free web instance
+  // must not create, validate, or depend on a local persistent data directory.
+} else {
+  const configuredDataDirectory = process.env.MQW_DATA_DIR || "/var/data/mqw";
+  if (!isAbsolute(configuredDataDirectory)) {
+    stop(
+      "MQW_DATA_DIR must be an absolute path on a persistent private volume.",
+    );
+  }
+  dataDirectory = resolve(configuredDataDirectory);
+  if (dataDirectory === "/" || dataDirectory === appDirectory) {
+    stop("MQW_DATA_DIR must be a dedicated private subdirectory.");
+  }
+  process.env.MQW_DATA_DIR = dataDirectory;
 }
-process.env.MQW_DATA_DIR = dataDirectory;
 
 try {
-  mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
-  // Render mounts disks only at runtime. Initialize the dedicated app directory
-  // without changing ownership recursively or touching other disk contents.
+  if (dataDirectory) {
+    mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
+    // Only SQLite needs a dedicated persistent volume. Never change ownership
+    // recursively or touch other contents of an optional mounted disk.
+    if (process.getuid?.() === 0) {
+      chownSync(dataDirectory, 1000, 1000);
+      chmodSync(dataDirectory, 0o700);
+    }
+  }
   if (process.getuid?.() === 0) {
-    chownSync(dataDirectory, 1000, 1000);
-    chmodSync(dataDirectory, 0o700);
     process.setgroups([]);
     process.setgid(1000);
     process.setuid(1000);
   }
-  accessSync(dataDirectory, constants.R_OK | constants.W_OK | constants.X_OK);
-  const probe = join(dataDirectory, `.mqw-startup-${randomUUID()}`);
-  const handle = openSync(probe, "wx", 0o600);
-  closeSync(handle);
-  unlinkSync(probe);
+  if (dataDirectory) {
+    accessSync(dataDirectory, constants.R_OK | constants.W_OK | constants.X_OK);
+    const probe = join(dataDirectory, `.mqw-startup-${randomUUID()}`);
+    const handle = openSync(probe, "wx", 0o600);
+    closeSync(handle);
+    unlinkSync(probe);
+  }
 } catch {
   stop(
-    "the private data directory is not writable by the application user (uid 1000).",
+    "unable to initialize private storage or switch to the application user (uid 1000).",
   );
 }
 

@@ -1,77 +1,74 @@
 # MQW security and privacy
 
-This document describes the current local implementation and the separate proposed Supabase schema. It is not a claim that a cloud account, production service, email provider, or external AI integration exists.
+This document describes the implemented SQLite and PostgreSQL adapters and their security contracts. A connected Supabase project or a passing local test is not, by itself, proof of a verified public deployment. Deployment evidence is recorded separately in `IMPLEMENTATION_STATUS.md`.
 
-## Current storage and identity
+## Storage and database authority
 
-- The active backend is a **single-instance Node.js server with SQLite**, not Supabase. The server opens `${MQW_DATA_DIR}/mqw.sqlite`, defaulting to `data/mqw.sqlite` under the application working directory. The database uses foreign keys and WAL journaling.
-- `MQW_OWNER_EMAIL`, when set, restricts new registrations to that normalized email address. Configure it before exposing a personal instance. This is a registration allowlist, not proof of email ownership; the local implementation does not send verification email, and the setting does not delete preexisting accounts.
-- Public production additionally requires `MQW_SETUP_TOKEN_HASH`. The first owner must present the matching private token; knowledge of the email address is insufficient. A timing-safe SHA-256 comparison checks the token, and the consumed hash is recorded atomically with account creation. Deleting an account does not reactivate its invitation. Reinitialization requires explicit hash rotation. The browser accepts the token in the URL fragment (not a query parameter), removes it from the address bar and submits it only in the signup body. Never publish setup links or `.mqw-operator/` files.
-- Account passwords are hashed with Node `scrypt`, a random 16-byte salt, and a 64-byte derived key. The plaintext password is not stored. Password verification uses a timing-safe comparison.
-- Sessions use random 32-byte bearer tokens. Only SHA-256 token hashes are stored in SQLite. Sessions expire after 30 days. Signing out invalidates the current session; changing a password invalidates prior sessions.
-- The session cookie is `HttpOnly`, `SameSite=Lax`, and scoped to `/`. It is `Secure` when `NODE_ENV=production`. Production therefore requires HTTPS.
-- Browser routes alone do not authorize access. Each API request resolves its session, and record reads/writes include the authenticated owner in their SQL conditions. A guessed record ID is not an authorization mechanism.
-- SQLite does not implement PostgreSQL RLS. The local implementation enforces ownership in the server data layer. Do not describe the running application as having Supabase/RLS protection.
-- This is not end-to-end encryption. A server operator or someone with access to the data volume can read the application database and audio files. Protect the server, filesystem, backups and any disk-encryption keys accordingly.
+- Local development and isolated tests use `MQW_STORAGE_BACKEND=sqlite`. The server opens `${MQW_DATA_DIR}/mqw.sqlite`, defaulting to `data/mqw.sqlite`, with foreign keys, WAL journaling and a five-second SQLite busy timeout. Local audio uses private files below that directory.
+- The cloud adapter uses `MQW_STORAGE_BACKEND=postgres` and a server-only `MQW_DATABASE_URL`. All durable application records, sessions, consumed invitations and audio bytes live in PostgreSQL; the cloud adapter does not rely on Render's ephemeral filesystem or a Supabase Storage bucket.
+- PostgreSQL uses a shared pool of at most three connections, verified TLS and an optional privately configured CA certificate. TLS verification must not be disabled to make a connection succeed. Neither the database URL nor credentials belong in `NEXT_PUBLIC_` variables, browser bundles, source control or logs.
+- The runtime schema under `supabase/runtime/schema.sql` uses the unexposed `mqw_private` schema and a restricted `mqw_app` role without administrative or RLS-bypass privileges. Browser roles have no schema/table access. Do not connect the application using the administrative `postgres` role or expose `mqw_private` through the Data API.
+- All seven runtime tables enable and force RLS. `records`, `idempotency` and `voice_blobs` require a transaction-local `mqw.user_id` and enforce both read/write ownership predicates. Auth/session/setup/cleanup tables deliberately allow the trusted server role to perform pre-authentication operations. This is custom cookie authentication; it does not use Supabase Auth or `auth.uid()`.
+- The server resolves a valid opaque session before establishing owner context. Context comes from that verified user, never a browser-supplied account ID. A database credential is trusted server authority: because it can establish owner context, RLS is not a claim that the credential can safely be handed to an untrusted client.
+- Transactions await all callback work before COMMIT/ROLLBACK. PostgreSQL domain transactions use an advisory lock to preserve serialized evidence/idempotency transitions, and owner context uses transaction-local `set_config`, not a session-wide setting on pooled connections.
+- Connections, async transaction context and the SQLite queue are shared across Next.js module instances for each database identity. PostgreSQL cache keys hash the connection configuration rather than retaining raw credentials as registry keys. Local SQLite queries outside an active transaction wait for that transaction's asynchronous callback to settle.
+- SQLite has no PostgreSQL RLS. Its adapter enforces explicit owner filters and ownership checks in the server layer. Tests force temporary SQLite storage and remove the remote database URL before importing the backend.
+- This is not end-to-end encryption. Authorized server/database operators can read application records and audio. Protect credentials, filesystem access, database access and backups accordingly.
 
-## Requests and browser storage
+## Accounts and sessions
 
-- Mutating API requests must have an `Origin` matching the request URL origin. The cookie's SameSite policy is an additional protection. A production reverse proxy must preserve the real host/protocol and must not accept arbitrary forwarded-host values from untrusted clients.
-- JSON request bodies are limited and validated. Generic record operations use a collection allowlist; learning results and server-owned grading state do not become arbitrary client-editable records.
-- API responses use `Cache-Control: no-store`. The application must not cache account responses, notes, recordings or test answers in a shared service-worker cache.
-- Clearing browser cookies signs the browser out; it does not delete the account's server records. Conversely, deleting the account must remove its server records, not just browser state.
-- Rate limiting in the current local server is process-local. A restart clears its counters. Before public hosting, review rate limiting against the actual reverse proxy, connection model and expected use. Do not expose a personal application with unrestricted registration without deliberately deciding who may create accounts.
+- `MQW_OWNER_EMAIL` restricts new registrations to the intended normalized address. This is an allowlist, not email ownership verification. Existing accounts are not removed by changing it.
+- Public production requires `MQW_SETUP_TOKEN_HASH`. The first owner presents the matching private token, which is checked using timing-safe SHA-256 comparison. Its consumed hash is committed atomically with account creation. Deleting an account does not reactivate the invitation; reinitialization requires explicit hash rotation. No default password exists.
+- The browser reads setup material from a URL fragment, removes it from the address bar and submits it only in the signup body. Never publish setup links or `.mqw-operator/` material. Capability responses disclose only `open`, `invite` or `closed`, never invitation secrets.
+- Passwords use Node `scrypt`, a random 16-byte salt and a 64-byte derived key. Plaintext passwords are not stored; verification uses timing-safe comparison.
+- Sessions use random 32-byte tokens; only their SHA-256 hashes are stored in the selected database. They expire after 30 days. Sign-out invalidates the current session; password changes invalidate previous sessions and issue a new one.
+- Cookies are `HttpOnly`, `SameSite=Lax`, scoped to `/`, and `Secure` in production. The public application must use HTTPS. Authenticated routes and APIs independently validate sessions.
+- No email verification or password-reset delivery provider is configured. Reset requests report that limitation instead of claiming an email was sent.
 
-## Learning evidence and private content
+## Requests, browser storage and logs
 
-- Question definitions and their answer keys are separate. A durable submission precedes result feedback. Open answers are explicitly self-graded, not claimed to be semantically verified by AI.
-- The current scheduler is the transparent `fixed-v1` fallback, not AI or personally fitted FSRS. A new card is due after one day. `again` resets its stage and schedules one day; `hard` preserves its stage but schedules one day; `good` advances the interval stage through 1/3/7/14/30 days. Changing a due date does not create a learning score. This exact fallback is a product rule, not a guarantee of an optimal interval.
-- Test/review events record actual actions. A missed date is not a wrong answer; skipping, self-report and deterministic correction must remain distinct.
-- Notes stay notes until an explicit conversion action. Notes, journal entries, audio and private reflection text are excluded from default insight inputs.
-- Personal insights are deterministic summaries of permitted learning records. They must show their sample, time window and caveats. They do not establish diagnoses, personality, intelligence, psychological state or a fixed learning style.
-- Event history is preserved during normal use. Intentional deletion is an exception to that retention rule. Any derived summary dependent on deleted evidence must be invalidated or recomputed.
+- Mutations require the configured `MQW_APP_ORIGIN`. For local development without that setting, validation uses the incoming Host and request protocol. Arbitrary forwarded-host/protocol headers are not trusted. The production launcher normalizes the intended HTTPS origin, including Render's configured external URL when available.
+- JSON and audio bodies have bounded readers and field validation. Generic CRUD has a collection allowlist; it cannot directly forge learning evidence or private grading snapshots.
+- APIs use `Cache-Control: no-store`. The service worker must not cache account responses, private content or test answers. Clearing browser cookies signs out that browser; it does not delete the account's database records.
+- Auth rate limits are process-local and reset when the process restarts or a free service sleeps. They are not a distributed abuse-prevention service.
+- Logs must omit passwords, tokens, connection URLs, SQL parameter values, answer bodies, notes, recordings and exported content. External monitoring must not attach private request bodies or screenshots.
+- `/api/health` reports only readiness (`ok` or `unavailable`). It does not disclose paths, users or configuration. A successful health response does not prove persistence across deployment restarts.
 
-## Voice recordings
+## Learning evidence and insights
 
-- Recording starts only after the user requests it and the browser grants microphone access. Permission denial has a text-capture alternative.
-- Recording, listening and saving are separate actions. There is no default transcription, external processing, or AI analysis.
-- Saved audio is stored on the private server data volume. Playback/download requires a valid account session and ownership of the asset. The server must not serve the data directory as public static files.
-- Avoid reusable signed bearer URLs for strict account isolation. An authenticated stream can be turned into a temporary local blob URL for playback; revoke that URL when the player unmounts or the account changes.
-- Recording formats, interruptions and browser permission behavior need actual Safari/iPhone testing. Passing a desktop browser test is not evidence that every iPhone recording flow works.
+- Versioned question presentation is separate from answer keys. Durable submissions precede feedback. Free text is explicitly self-graded; no semantic AI grading is claimed.
+- One question has one saved response within a lesson attempt. Identical network replays return the existing response; a changed answer requires a new lesson attempt, preserving the earlier evidence. Metacognitive predictions cannot be entered after scored questions.
+- The scheduler is the documented `fixed-v1` fallback. Initial review is after one day. `again` resets the stage and schedules one day; `hard` preserves the stage but schedules one day; `good` advances through the 1/3/7/14/30-day stages. It is not FSRS, AI or a guarantee of optimal retention. Rescheduling does not change a score.
+- Skips, self-reports and deterministic scores remain distinct. Missed dates do not become wrong answers or psychological evidence.
+- Notes stay notes unless explicitly converted. Notes, journals, audio and reflection text are excluded from default insight inputs. Insights cite permitted numerical events, sample sizes and dates and can be disputed, dismissed or disabled.
+- No diagnoses, personality labels, intelligence scores or immutable learning styles are inferred. Normal event history is preserved; intentional deletion is an explicit exception, and dependent summaries must be recomputed.
 
-## External AI and telemetry
+## Audio and export
 
-The current application has no configured external AI provider and makes no external AI requests. Core lessons, reviews, palace and progress do not require one. There are no third-party advertising or analytics trackers by default.
+- Recording requires an explicit user action and browser microphone permission. Preview/save/delete are separate actions. There is no automatic transcription or AI processing.
+- PostgreSQL stores immutable audio in owner-bound `bytea` rows with a composite ownership foreign key to metadata. Metadata and bytes commit together; deletion cascades in the same database transaction. Each file is limited to 20 MiB and the application enforces a 200 MiB account allowance. These bytes count against the database quota, not Supabase's separate Storage allowance.
+- Local audio files are private and require authenticated application playback. Both adapters enforce ownership; no public bucket or reusable signed bearer URL is used. Temporary browser blob URLs must be revoked on unmount/account change.
+- Playback has a bounded per-file allocation. Export streams JSON and audio incrementally under backpressure instead of accumulating the full audio archive in server memory. A missing or interrupted recording is explicitly labeled; a partial file is never represented as complete.
+- Export requires a valid session and password confirmation before streaming starts. The versioned JSON contains that account's metadata, saved evidence, historical private snapshots and available original audio encoded as base64. Metadata is captured in one transaction. This is JSON export, not a CSV archive or an implemented cloud restore workflow.
+- Real-device Safari/iPhone permission, format and interruption behavior remains a separate acceptance check.
 
-A future integration requires a separate implementation and privacy review. Its request must have a specific purpose, an editable preview of the exact outgoing data and recipient, known cost/retention disclosures, and one explicit send confirmation. Changing the payload invalidates that confirmation. Notes, recordings, journals and unrelated records remain excluded. Canceling before send transfers nothing; canceling after send cannot promise that the provider has erased an already received payload.
+## Deletion, backups and free-plan limits
 
-Operational logs must omit passwords, session tokens, raw answer text, private notes, voice content, audio URLs and AI payloads. Error reporting must not attach full request bodies or automatically capture private screens. Any external error-monitoring vendor would be a new data recipient requiring review.
+- Account deletion requires the current password. PostgreSQL removes owned rows, sessions and audio through transactionally cascading foreign keys. The consumed invitation ledger remains an operational replay-prevention record without an account/email identifier.
+- Local deletion stages audio in a durable cleanup queue. A pending-files response is not a claim of finished physical purge; startup retries queued cleanup.
+- SQL deletion does not instantly erase physical database pages, WAL or independent backups. Backup retention and restore procedures must account for previously deleted data and expired credentials.
+- `scripts/backup.mjs` verifies local SQLite online backups with voice snapshots, checksums and integrity checks. Restore refuses an occupied destination and revokes restored sessions. It is a local SQLite operator tool, not a PostgreSQL backup implementation. Run it with filesystem ownership appropriate for the app. Checksums detect corruption; they do not authenticate an archive whose manifest was maliciously replaced.
+- Supabase Free automatic database backups are not included in the verified plan description. An explicit private cloud backup/restore procedure and retention policy are still required; no external backup recipient is enabled by the application.
+- Render Free can sleep and cannot persist local files. Supabase Free can pause after inactivity and has finite database/egress quotas. The cloud adapter must report unavailability rather than silently opening an empty SQLite database. Never describe the free deployment as guaranteed always-on hosting.
 
-## Export and deletion
+## External AI and notifications
 
-- Export requires a valid session and password confirmation. The versioned JSON includes the requesting account's state, owned historical snapshots, and available original voice bytes encoded as base64. A missing local voice file is reported explicitly in the export rather than silently fabricated. The current export is JSON, not a separate CSV archive.
-- Account deletion verifies the account password and removes its owned records and sessions. It stages private audio for removal using a persistent file-cleanup queue. If physical cleanup fails, it returns a pending-files status rather than an unqualified successful erasure; server startup retries queued cleanup. Do not present a pending status as a finished physical purge.
-- A live database deletion does not erase independent filesystem snapshots or provider backups. No cloud backup policy has been selected or verified. Before production, establish backup location, encryption, access controls, retention, restore behavior and the point at which a deletion ages out of backups.
-- Restoring an old backup can restore previously deleted accounts unless deletion records are reapplied. A production restore procedure must address that case.
-- The local implementation's database and files are ordinary private application data. Do not accidentally include them in git, build artifacts, diagnostics or a public download.
+There is no external AI provider or AI request. Core learning, reviews, palace and progress work without one. There are no advertising or third-party analytics trackers by default. Any future AI integration requires purpose-specific payload/recipient preview and explicit send consent, with notes/audio/unrelated records excluded. Canceling before send transfers nothing; canceling afterward cannot guarantee remote erasure.
 
-## Time and permissions
+Notification preferences are separate from browser permission. Important deadlines and the single optional habit reminder currently operate while the app is open; no background push service is configured. Date instants use UTC and IANA timezone rendering, initially `Asia/Hebron`; date-only habits/deadlines and optional wall-time plans preserve their local-day meaning.
 
-Actual event timestamps and review instants use UTC and are rendered using the configured IANA time zone, initially `Asia/Hebron`. Date-only habit logs and deadlines need local-date semantics. Changing timezone must not silently reinterpret historical rest/done choices.
+## Verification boundaries
 
-Notification categories are preferences, not OS permission. Ask for permission following an explicit user action; do not make denial block learning. Web Push delivery is not guaranteed just because an in-app review exists.
+The archived normalized proposal at `supabase/proposals/normalized_schema.sql` is not the runtime schema. Its older embedded tests do not prove the new adapter. The runtime template has a separate local PostgreSQL RLS/constraint runner; local results are distinct from actual Supabase privileges, TLS/pooler connectivity, advisor output and cloud-restart persistence.
 
-## Proposed Supabase protection
-
-`supabase/migrations/202611180001_mqw_proposed_schema.sql` is **unconnected preparation**, not an active backend adapter. It proposes:
-
-- RLS on every client-visible private table, `auth.uid()` owner checks, and composite `(user_id, parent_id)` foreign keys to prevent cross-account relationships.
-- Published versioned educational definitions, with answer keys and palace snapshots in an unexposed `private` schema.
-- Client read-only access to learning evidence; privileged domain writes still require reviewed transactional server RPCs or an equivalent server adapter. This migration does not supply those RPCs.
-- A private audio bucket with owner-prefixed paths and authenticated read/create/delete policies.
-
-The optional isolation SQL includes A/B/anonymous fixture checks and rolls them back. Both SQL files were syntax-parsed, then the migration and isolation suite passed in **PGlite embedded PostgreSQL with minimal auth/storage stubs**. This exercises PostgreSQL constraints and policy checks; it does not verify Supabase authentication, HTTP APIs, Storage delivery, or a production deployment. The suite has **not been run against a full Supabase instance**. A complete adapter and real integration tests are required before switching runtime storage.
-
-## Release evidence required
-
-Before describing a deployment as production-ready, verify account isolation across all API routes, nested records, files and exports; double-submit and interrupted-save behavior; logout/account switching; password/session changes; private test-answer responses; export coverage and deletion failure handling; and actual iPhone Safari/PWA accessibility/recording behavior. Record passed checks separately from tests not run and features deliberately unavailable.
+Release verification must cover real remote role permissions, anonymous Data API denial, A/B account isolation, audio, exports/deletion, concurrent submissions, session changes, interruption recovery and actual device behavior. Report which checks ran and where; do not turn a local SQLite or container result into a claim of verified cloud operation.

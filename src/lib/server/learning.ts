@@ -8,7 +8,6 @@ import type {
 import {
   ApiError,
   createEntity,
-  getEntity,
   getSecret,
   idempotent,
   listEntities,
@@ -39,16 +38,16 @@ function response(value: unknown): string | string[] {
     return value;
   throw new ApiError("الإجابة غير صالحة.");
 }
-export function learningAction(userId: string, b: Record<string, unknown>) {
+export async function learningAction(userId: string, b: Record<string, unknown>) {
   switch (b.action) {
     case "start": {
       const slug = text(b.lessonSlug, "الدرس", 100);
       const version = getLessonVersion(slug);
       if (!version) throw new ApiError("الدرس غير موجود.", 404);
-      const existing = listEntities<LessonAttempt>(
+      const existing = (await listEntities<LessonAttempt>(
         userId,
         "lessonAttempts",
-      ).find(
+      )).find(
         (a) =>
           a.lessonSlug === slug &&
           a.contentVersion === version &&
@@ -57,7 +56,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       return {
         attempt:
           existing ||
-          createEntity<LessonAttempt>(userId, "lessonAttempts", {
+          await createEntity<LessonAttempt>(userId, "lessonAttempts", {
             lessonSlug: slug,
             contentVersion: version,
             status: "in_progress",
@@ -66,7 +65,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       };
     }
     case "progress": {
-      const a = requireEntity<LessonAttempt>(
+      const a = await requireEntity<LessonAttempt>(
         userId,
         "lessonAttempts",
         text(b.attemptId),
@@ -88,7 +87,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
         "questionId" in current &&
         getRequiredQuestionIds(a.lessonSlug).includes(current.questionId)
       ) {
-        const done = listEntities<Answer>(userId, "answers").some(
+        const done = (await listEntities<Answer>(userId, "answers")).some(
           (x) =>
             x.attemptId === a.id &&
             x.questionId === current.questionId &&
@@ -98,7 +97,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       }
       const patch: Record<string, unknown> = { step: b.step };
       if (b.draftQuestionId !== undefined) {
-        const alreadyAnswered = listEntities<Answer>(userId, "answers").some(
+        const alreadyAnswered = (await listEntities<Answer>(userId, "answers")).some(
           (x) => x.attemptId === a.id && x.questionId === b.draftQuestionId,
         );
         if (alreadyAnswered) return { attempt: a };
@@ -111,22 +110,22 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
         patch.draftQuestionId = text(b.draftQuestionId, "السؤال", 100);
         patch.draftResponse = response(b.draftResponse);
       }
-      return { attempt: updateEntity(userId, "lessonAttempts", a.id, patch) };
+      return { attempt: await updateEntity(userId, "lessonAttempts", a.id, patch) };
     }
     case "submit": {
-      const a = requireEntity<LessonAttempt>(
+      const a = await requireEntity<LessonAttempt>(
         userId,
         "lessonAttempts",
         text(b.attemptId),
       );
       const questionId = text(b.questionId, "السؤال", 100);
       const answer = response(b.response);
-      return idempotent(
+      return await idempotent(
         userId,
         text(b.submissionId, "معرّف الحفظ", 150),
         `lesson:${a.id}:${questionId}:${JSON.stringify(answer)}`,
-        () => {
-          const prior = listEntities<Answer>(userId, "answers").filter(
+        async () => {
+          const prior = (await listEntities<Answer>(userId, "answers")).filter(
             (x) => x.attemptId === a.id,
           );
           const duplicate = prior.find((x) => x.questionId === questionId);
@@ -163,11 +162,11 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
             );
           }
           if (a.draftQuestionId === questionId)
-            updateEntity(userId, "lessonAttempts", a.id, {
+            await updateEntity(userId, "lessonAttempts", a.id, {
               draftQuestionId: null,
               draftResponse: null,
             });
-          const saved = createEntity<Answer>(userId, "answers", {
+          const saved = await createEntity<Answer>(userId, "answers", {
             attemptId: a.id,
             questionId,
             response: answer,
@@ -182,7 +181,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       );
     }
     case "self-grade": {
-      const a = requireEntity<Answer>(userId, "answers", text(b.answerId));
+      const a = await requireEntity<Answer>(userId, "answers", text(b.answerId));
       if (a.gradingSource === "deterministic")
         throw new ApiError("هذا السؤال مصحّح بقواعد واضحة.");
       const r = rating(b.rating);
@@ -191,12 +190,12 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
           "التقييم محفوظ؛ أعد المحاولة لإنشاء دليل جديد.",
           409,
         );
-      return idempotent(
+      return await idempotent(
         userId,
         text(b.submissionId, "معرّف الحفظ", 150),
         `self:${a.id}:${r}`,
-        () => ({
-          answer: updateEntity(userId, "answers", a.id, {
+        async () => ({
+          answer: await updateEntity(userId, "answers", a.id, {
             rating: r,
             gradingSource: "self_report",
             correct: null,
@@ -212,7 +211,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       );
     }
     case "complete": {
-      const a = requireEntity<LessonAttempt>(
+      const a = await requireEntity<LessonAttempt>(
         userId,
         "lessonAttempts",
         text(b.attemptId),
@@ -222,7 +221,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
           "إصدار الدرس تغيّر؛ ابدأ محاولة جديدة مع الاحتفاظ بالسجل القديم.",
           409,
         );
-      const answers = listEntities<Answer>(userId, "answers").filter(
+      const answers = (await listEntities<Answer>(userId, "answers")).filter(
         (x) => x.attemptId === a.id,
       );
       const required = getRequiredQuestionIds(a.lessonSlug);
@@ -239,12 +238,12 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
         throw new ApiError("أكمل الأسئلة والتقييم الذاتي أولًا.");
       const q = getReviewQuestion(a.lessonSlug);
       if (!q) throw new ApiError("تعذّر تحديد سؤال المراجعة.");
-      const existing = listEntities<ReviewCard>(userId, "reviews").find(
+      const existing = (await listEntities<ReviewCard>(userId, "reviews")).find(
         (r) => r.lessonSlug === a.lessonSlug && r.questionId === q.questionId,
       );
       const review =
         existing ||
-        createEntity<ReviewCard>(
+        await createEntity<ReviewCard>(
           userId,
           "reviews",
           {
@@ -262,7 +261,7 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
         attempt:
           a.status === "completed"
             ? a
-            : updateEntity(userId, "lessonAttempts", a.id, {
+            : await updateEntity(userId, "lessonAttempts", a.id, {
                 status: "completed",
                 completedAt: new Date().toISOString(),
               }),
@@ -273,24 +272,24 @@ export function learningAction(userId: string, b: Record<string, unknown>) {
       throw new ApiError("عملية الدرس غير معروفة.");
   }
 }
-export function reviewsAction(userId: string, b: Record<string, unknown>) {
+export async function reviewsAction(userId: string, b: Record<string, unknown>) {
   switch (b.action) {
     case "submit": {
-      const card = requireEntity<ReviewCard>(userId, "reviews", text(b.cardId));
+      const card = await requireEntity<ReviewCard>(userId, "reviews", text(b.cardId));
       if (card.target !== "question")
         throw new ApiError("ابدأ اختبار القصر من صفحة قصري.");
       const answer = response(b.response);
-      const secret = getSecret<{ modelAnswer: string }>(
+      const secret = await getSecret<{ modelAnswer: string }>(
         userId,
         "reviews",
         card.id,
       );
-      return idempotent(
+      return await idempotent(
         userId,
         text(b.submissionId, "معرّف الحفظ", 150),
         `review:${card.id}:${JSON.stringify(answer)}`,
-        () => ({
-          event: createEntity<ReviewEvent>(userId, "reviewEvents", {
+        async () => ({
+          event: await createEntity<ReviewEvent>(userId, "reviewEvents", {
             cardId: card.id,
             response: Array.isArray(answer) ? answer.join("، ") : answer,
             modelAnswer: secret.modelAnswer,
@@ -302,12 +301,12 @@ export function reviewsAction(userId: string, b: Record<string, unknown>) {
       );
     }
     case "rate": {
-      const event = requireEntity<ReviewEvent>(
+      const event = await requireEntity<ReviewEvent>(
         userId,
         "reviewEvents",
         text(b.eventId),
       );
-      const card = requireEntity<ReviewCard>(userId, "reviews", event.cardId);
+      const card = await requireEntity<ReviewCard>(userId, "reviews", event.cardId);
       if (event.kind !== "attempt")
         throw new ApiError("لا يمكن تقييم تغيير الموعد.");
       if (event.rating) return { review: card };
@@ -320,12 +319,12 @@ export function reviewsAction(userId: string, b: Record<string, unknown>) {
             : Math.min(card.stage + 1, INTERVALS.length - 1);
       const days = r === "hard" ? 1 : INTERVALS[stage];
       const dueAt = new Date(Date.now() + days * DAY).toISOString();
-      updateEntity(userId, "reviewEvents", event.id, {
+      await updateEntity(userId, "reviewEvents", event.id, {
         rating: r,
         nextDueAt: dueAt,
       });
       return {
-        review: updateEntity(userId, "reviews", card.id, {
+        review: await updateEntity(userId, "reviews", card.id, {
           stage,
           dueAt,
           lastReviewedAt: new Date().toISOString(),
@@ -333,19 +332,19 @@ export function reviewsAction(userId: string, b: Record<string, unknown>) {
       };
     }
     case "reschedule": {
-      const card = requireEntity<ReviewCard>(userId, "reviews", text(b.cardId));
+      const card = await requireEntity<ReviewCard>(userId, "reviews", text(b.cardId));
       const dueAt = text(b.dueAt, "الموعد", 100);
       if (!Number.isFinite(Date.parse(dueAt)))
         throw new ApiError("الموعد غير صالح.");
       const normalized = new Date(dueAt).toISOString();
-      createEntity(userId, "reviewEvents", {
+      await createEntity(userId, "reviewEvents", {
         cardId: card.id,
         kind: "reschedule",
         previousDueAt: card.dueAt,
         nextDueAt: normalized,
       });
       return {
-        review: updateEntity(userId, "reviews", card.id, { dueAt: normalized }),
+        review: await updateEntity(userId, "reviews", card.id, { dueAt: normalized }),
       };
     }
     default:

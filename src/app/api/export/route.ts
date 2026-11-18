@@ -3,14 +3,21 @@ import { open } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { ReadStream } from "node:fs";
 import { requireUser, verifyPassword } from "@/lib/server/auth";
-import { getState, db, transaction } from "@/lib/server/db";
+import {
+  getState,
+  db,
+  query,
+  storageBackend,
+  transaction,
+  withOwner,
+} from "@/lib/server/db";
 import { fail, rateLimit, checkOrigin, readBody } from "@/lib/server/http";
 import { voicePath } from "@/lib/server/voice";
 import type { VoiceAsset } from "@/lib/types";
 export const runtime = "nodejs";
 
 /** The generator is pulled by the consumer; it never buffers the audio archive. */
-async function* voiceJson(
+async function* localVoiceJson(
   userId: string,
   asset: VoiceAsset,
 ): AsyncGenerator<string> {
@@ -84,6 +91,88 @@ async function* voiceJson(
     await handle.close().catch(() => {});
   }
 }
+/** Each cloud pull reads at most 768 KiB; no complete file/archive is accumulated. */
+async function* postgresVoiceJson(
+  userId: string,
+  asset: VoiceAsset,
+): AsyncGenerator<string> {
+  if (
+    !Number.isSafeInteger(asset.size) ||
+    asset.size < 1 ||
+    asset.size > 20 * 1024 * 1024
+  ) {
+    yield JSON.stringify({
+      id: asset.id,
+      error: "بيانات حجم التسجيل غير صالحة",
+    });
+    return;
+  }
+  try {
+    const result = await withOwner(userId, () =>
+      query(
+        "SELECT octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+        [userId, asset.id],
+      ),
+    );
+    if (Number(result.rows[0]?.size) !== asset.size)
+      throw new Error("unavailable audio");
+  } catch {
+    yield JSON.stringify({
+      id: asset.id,
+      error: "ملف التسجيل غير متاح أو تغيّر منذ حفظ بياناته",
+    });
+    return;
+  }
+  yield (
+    JSON.stringify({
+      id: asset.id,
+      mimeType: asset.mimeType,
+      encoding: "base64",
+    }).slice(0, -1) + ',"content":"'
+  );
+  let carry = Buffer.alloc(0);
+  let total = 0;
+  let complete = false;
+  try {
+    const chunkSize = 768 * 1024;
+    while (total < asset.size) {
+      const wanted = Math.min(chunkSize, asset.size - total);
+      const result = await withOwner(userId, () =>
+        query(
+          "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+          [userId, asset.id, total + 1, wanted],
+        ),
+      );
+      const row = result.rows[0];
+      const chunk = row?.chunk;
+      if (
+        !Buffer.isBuffer(chunk) ||
+        chunk.length !== wanted ||
+        Number(row.size) !== asset.size
+      )
+        throw new Error("audio changed while exporting");
+      total += chunk.length;
+      const bytes = carry.length ? Buffer.concat([carry, chunk]) : chunk;
+      const boundary = bytes.length - (bytes.length % 3);
+      if (boundary) yield bytes.subarray(0, boundary).toString("base64");
+      carry = Buffer.from(bytes.subarray(boundary));
+    }
+    complete = total === asset.size;
+  } catch {
+    // A deleted/unavailable chunk is a labelled partial export, never a claimed complete file.
+  }
+  if (carry.length) yield carry.toString("base64");
+  yield complete
+    ? '"}'
+    : '","complete":false,"error":"تعذّر إكمال قراءة التسجيل؛ أعد التصدير"}';
+}
+async function* voiceJson(
+  userId: string,
+  asset: VoiceAsset,
+): AsyncGenerator<string> {
+  if (storageBackend === "postgres") yield* postgresVoiceJson(userId, asset);
+  else yield* localVoiceJson(userId, asset);
+}
 async function* exportJson(
   prefix: string,
   userId: string,
@@ -105,24 +194,33 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     checkOrigin(request);
-    const user = requireUser(request);
+    const user = await requireUser(request);
     const body = await readBody(request);
-    verifyPassword(user.id, body.password);
+    await withOwner(user.id, () => verifyPassword(user.id, body.password));
     rateLimit(`export:${user.id}`, 3);
-    const { state, ownedSnapshots } = transaction(() => ({
-      state: getState(user.id),
-      ownedSnapshots: (
-        db
+    const { state, ownedSnapshots } = await withOwner(user.id, () =>
+      transaction(async () => {
+        const state = await getState(user.id);
+        const rows = (await db
           .prepare(
             "SELECT id,collection,secret FROM records WHERE user_id=? AND secret!='{}'",
           )
-          .all(user.id) as { id: string; collection: string; secret: string }[]
-      ).map((row) => ({
-        id: row.id,
-        collection: row.collection,
-        snapshot: JSON.parse(row.secret),
-      })),
-    }));
+          .all(user.id)) as {
+          id: string;
+          collection: string;
+          secret: string | Record<string, unknown>;
+        }[];
+        const ownedSnapshots = rows.map((row) => ({
+          id: row.id,
+          collection: row.collection,
+          snapshot:
+            typeof row.secret === "string"
+              ? JSON.parse(row.secret)
+              : row.secret,
+        }));
+        return { state, ownedSnapshots };
+      }),
+    );
     const metadata = JSON.stringify({
       schemaVersion: "mqw-export-1",
       exportedAt: new Date().toISOString(),

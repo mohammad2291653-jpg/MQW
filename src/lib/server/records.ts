@@ -94,17 +94,17 @@ function strings(v: unknown) {
     throw new ApiError("القائمة غير صالحة.");
   return v;
 }
-function ref(userId: string, collection: string, id: unknown) {
+async function ref(userId: string, collection: string, id: unknown) {
   if (id === undefined || id === null || id === "") return undefined;
   const value = text(id, "المعرّف", 100);
-  requireEntity(userId, collection, value);
+  await requireEntity(userId, collection, value);
   return value;
 }
-export function validateRecord(
+export async function validateRecord(
   userId: string,
   collection: string,
   v: Record<string, unknown>,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   checkCollection(collection);
   switch (collection) {
     case "notes":
@@ -121,8 +121,8 @@ export function validateRecord(
         done: bool(v.done),
         priority: bool(v.priority),
         dueDate: date(v.dueDate),
-        projectId: ref(userId, "projects", v.projectId),
-        noteId: ref(userId, "notes", v.noteId),
+        projectId: await ref(userId, "projects", v.projectId),
+        noteId: await ref(userId, "notes", v.noteId),
         timeBlock: timeBlock(v.timeBlock),
       };
     case "habits": {
@@ -191,59 +191,63 @@ export function validateRecord(
       throw new ApiError("نوع غير صالح.");
   }
 }
-export function createRecord(
+export async function createRecord(
   userId: string,
   collection: string,
   body: Record<string, unknown>,
 ) {
-  const values = validateRecord(userId, collection, body);
+  const values = await validateRecord(userId, collection, body);
   if (
     collection === "tasks" &&
     values.priority &&
-    listEntities(userId, "tasks").filter((t) => t.priority && !t.done).length >=
-      3
+    (await listEntities(userId, "tasks")).filter((t) => t.priority && !t.done)
+      .length >= 3
   )
     throw new ApiError("اختر ثلاث أولويات كحد أقصى.");
   return createEntity(userId, collection, values);
 }
-export function patchRecord(
+export async function patchRecord(
   userId: string,
   collection: string,
   id: string,
   body: Record<string, unknown>,
 ) {
   checkCollection(collection);
-  const old = requireEntity(userId, collection, id);
-  const values = validateRecord(userId, collection, { ...old, ...body });
+  const old = await requireEntity(userId, collection, id);
+  const values = await validateRecord(userId, collection, { ...old, ...body });
   if (
     collection === "tasks" &&
     values.priority &&
     !values.done &&
-    listEntities(userId, "tasks").filter(
+    (await listEntities(userId, "tasks")).filter(
       (t) => t.id !== id && t.priority && !t.done,
     ).length >= 3
   )
     throw new ApiError("اختر ثلاث أولويات كحد أقصى.");
   return updateEntity(userId, collection, id, values);
 }
-export function removeRecord(userId: string, collection: string, id: string) {
+export async function removeRecord(
+  userId: string,
+  collection: string,
+  id: string,
+) {
   checkCollection(collection);
   if (collection === "projects")
-    for (const task of listEntities(userId, "tasks"))
+    for (const task of await listEntities(userId, "tasks"))
       if (task.projectId === id)
-        updateEntity(userId, "tasks", task.id, { projectId: null });
+        await updateEntity(userId, "tasks", task.id, { projectId: null });
   if (collection === "notes")
-    for (const task of listEntities(userId, "tasks"))
+    for (const task of await listEntities(userId, "tasks"))
       if (task.noteId === id)
-        updateEntity(userId, "tasks", task.id, { noteId: null });
-  deleteEntity(userId, collection, id);
+        await updateEntity(userId, "tasks", task.id, { noteId: null });
+  await deleteEntity(userId, collection, id);
   return { deleted: true };
 }
-export function patchPreferences(
+export async function patchPreferences(
   userId: string,
   body: Record<string, unknown>,
 ) {
-  const value = preferences(userId);
+  const value = await preferences(userId);
   for (const [key, v] of Object.entries(body)) {
     if (key === "timezone") {
       if (typeof v !== "string")

@@ -1,33 +1,40 @@
-# OPTIONAL PAID template. The owner has selected FREE hosting instead.
-# Do not apply this template for the free-only deployment; a durable remote
-# database/storage adapter must be completed before removing the local disk.
-# Private, single-instance MQW hosting. This file creates a NEW service only.
-# Existing services in the workspace are unrelated and must not be adopted.
+# Free web runtime; persistent records and audio live in Supabase Free Postgres.
+# Review docs/FREE_HOSTING_PLAN.md before any separately authorized deployment.
+# This file is packaging, not authorization to create or deploy infrastructure.
+# Create a NEW service only; do not adopt unrelated existing services.
 services:
   - type: web
     name: mqw
     runtime: docker
     repo: https://github.com/mohammad2291653-jpg/MQW
-    branch: main
+    # Inherit the branch selected for the Blueprint (free-cloud during review).
     region: frankfurt
-    plan: 0.5c-512mb
+    plan: free
     numInstances: 1
     autoDeployTrigger: "off"
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    disk:
-      name: mqw-private-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
-      - key: MQW_DATA_DIR
-        value: /var/data/mqw
+      - key: MQW_STORAGE_BACKEND
+        value: postgres
+      # Restricted mqw_app role via the actual IPv4 Session Pooler, port 5432.
+      # Provide through Render's private environment binding; never commit it.
+      - key: MQW_DATABASE_URL
+        sync: false
+      # MQW_DATABASE_CA_CERT can be added privately if a custom CA is required.
       - key: MQW_OWNER_EMAIL
         sync: false
       - key: MQW_SETUP_TOKEN_HASH
         sync: false
+      # Startup falls back to Render's HTTPS URL; this explicit self-reference
+      # also makes the application origin visible in the reviewed configuration.
+      - key: MQW_APP_ORIGIN
+        fromService:
+          name: mqw
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL

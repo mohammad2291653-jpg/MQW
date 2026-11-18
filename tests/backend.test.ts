@@ -1,10 +1,12 @@
-import { test, after } from "node:test";
+import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "mqw-test-"));
 process.env.MQW_DATA_DIR = dir;
+delete process.env.MQW_DATABASE_URL;
+process.env.MQW_STORAGE_BACKEND = "sqlite";
 const {
   db,
   getState,
@@ -23,31 +25,39 @@ const { learningAction, reviewsAction } =
   require("../src/lib/server/learning") as typeof import("../src/lib/server/learning");
 const { checkOrigin } =
   require("../src/lib/server/http") as typeof import("../src/lib/server/http");
-const a = signUp("a@example.test", "private-password-123", "A");
-const b = signUp("b@example.test", "private-password-456", "B");
-const act = (body: Record<string, unknown>) =>
-  transaction(() => learningAction(a.user.id, body)) as any;
-const rev = (body: Record<string, unknown>) =>
-  transaction(() => reviewsAction(a.user.id, body)) as any;
-after(() => {
-  db.close();
+let a: Awaited<ReturnType<typeof signUp>>;
+let b: Awaited<ReturnType<typeof signUp>>;
+before(async () => {
+  a = await signUp("a@example.test", "private-password-123", "A");
+  b = await signUp("b@example.test", "private-password-456", "B");
+});
+const act = async (body: Record<string, unknown>) =>
+  (await transaction(async () => await learningAction(a.user.id, body))) as any;
+const rev = async (body: Record<string, unknown>) =>
+  (await transaction(async () => await reviewsAction(a.user.id, body))) as any;
+after(async () => {
+  await db.close();
   rmSync(dir, { recursive: true, force: true });
 });
-test("real password hashes and session tokens isolate accounts", () => {
+test("real password hashes and session tokens isolate accounts", async () => {
   assert.equal(
-    signIn("a@example.test", "private-password-123").user.id,
+    (await signIn("a@example.test", "private-password-123")).user.id,
     a.user.id,
   );
-  assert.throws(() => signIn("a@example.test", "wrong-password"));
-  assert.equal(getUserByToken(a.token)?.id, a.user.id);
-  assert.equal(getUserByToken("fake"), null);
-  const rows = db.prepare("SELECT password_hash FROM users").all() as {
+  await assert.rejects(
+    async () => await signIn("a@example.test", "wrong-password"),
+  );
+  assert.equal((await getUserByToken(a.token))?.id, a.user.id);
+  assert.equal(await getUserByToken("fake"), null);
+  const rows = (await db.prepare("SELECT password_hash FROM users").all()) as {
     password_hash: string;
   }[];
   assert.ok(
     rows.every((row) => !row.password_hash.includes("private-password")),
   );
-  const sessions = db.prepare("SELECT token_hash FROM sessions").all() as {
+  const sessions = (await db
+    .prepare("SELECT token_hash FROM sessions")
+    .all()) as {
     token_hash: string;
   }[];
   assert.ok(
@@ -56,25 +66,31 @@ test("real password hashes and session tokens isolate accounts", () => {
     ),
   );
 });
-test("all records are private and references cannot target another account", () => {
-  const note = createRecord(a.user.id, "notes", {
+test("all records are private and references cannot target another account", async () => {
+  const note = await createRecord(a.user.id, "notes", {
     text: "Private diary",
     journal: true,
   });
-  assert.equal(getEntity(b.user.id, "notes", note.id), undefined);
-  assert.throws(() =>
-    patchRecord(b.user.id, "notes", note.id, { text: "intrusion" }),
+  assert.equal(await getEntity(b.user.id, "notes", note.id), undefined);
+  await assert.rejects(
+    async () =>
+      await patchRecord(b.user.id, "notes", note.id, { text: "intrusion" }),
   );
-  assert.throws(() =>
-    createRecord(b.user.id, "tasks", { title: "link attack", noteId: note.id }),
+  await assert.rejects(
+    async () =>
+      await createRecord(b.user.id, "tasks", {
+        title: "link attack",
+        noteId: note.id,
+      }),
   );
-  assert.throws(() =>
-    createRecord(a.user.id, "answers", { response: "forged" }),
+  await assert.rejects(
+    async () =>
+      await createRecord(a.user.id, "answers", { response: "forged" }),
   );
-  assert.deepEqual(getState(b.user.id).notes, []);
-  assert.equal(getState(a.user.id).tasks.length, 0);
+  assert.deepEqual((await getState(b.user.id)).notes, []);
+  assert.equal((await getState(a.user.id)).tasks.length, 0);
 });
-test("cross-site mutations fail and timezone settings validate IANA names", () => {
+test("cross-site mutations fail and timezone settings validate IANA names", async () => {
   assert.throws(() =>
     checkOrigin(
       new Request("http://localhost/api/state", {
@@ -87,23 +103,27 @@ test("cross-site mutations fail and timezone settings validate IANA names", () =
       headers: { origin: "http://localhost" },
     }),
   );
-  assert.throws(() => patchPreferences(a.user.id, { timezone: "made-up" }));
+  await assert.rejects(
+    async () => await patchPreferences(a.user.id, { timezone: "made-up" }),
+  );
   assert.equal(
-    patchPreferences(a.user.id, { timezone: "Asia/Hebron" }).timezone,
+    (await patchPreferences(a.user.id, { timezone: "Asia/Hebron" })).timezone,
     "Asia/Hebron",
   );
 });
-test("complete real lesson loop persists retries, self-report and review without answer leakage", () => {
-  const { attempt } = act({
+test("complete real lesson loop persists retries, self-report and review without answer leakage", async () => {
+  const { attempt } = await act({
     action: "start",
     lessonSlug: "familiarity-is-not-recall",
   });
   assert.equal(
-    act({ action: "start", lessonSlug: "familiarity-is-not-recall" }).attempt
-      .id,
+    (await act({ action: "start", lessonSlug: "familiarity-is-not-recall" }))
+      .attempt.id,
     attempt.id,
   );
-  assert.throws(() => act({ action: "complete", attemptId: attempt.id }));
+  await assert.rejects(
+    async () => await act({ action: "complete", attemptId: attempt.id }),
+  );
   const body = {
     action: "submit",
     attemptId: attempt.id,
@@ -111,131 +131,153 @@ test("complete real lesson loop persists retries, self-report and review without
     response: "DNA in the nucleus",
     submissionId: "l1-first",
   };
-  const first = act(body).answer;
-  assert.equal(act(body).answer.id, first.id);
-  assert.equal(listEntities(a.user.id, "answers").length, 1);
+  const first = (await act(body)).answer;
+  assert.equal((await act(body)).answer.id, first.id);
+  assert.equal((await listEntities(a.user.id, "answers")).length, 1);
   assert.equal(first.correct, null);
   assert.ok(first.modelAnswer);
-  act({
+  await act({
     action: "self-grade",
     answerId: first.id,
     rating: "good",
     submissionId: "grade-first",
   });
-  const incorrect = act({
-    action: "submit",
-    attemptId: attempt.id,
-    questionId: "recognize",
-    response: "reread",
-    submissionId: "wrong",
-  }).answer;
-  assert.equal(incorrect.correct, false);
-  assert.ok(incorrect.feedback);
-  assert.throws(() =>
-    act({
+  const incorrect = (
+    await act({
       action: "submit",
       attemptId: attempt.id,
       questionId: "recognize",
-      response: "close",
-      submissionId: "retry",
-    }),
+      response: "reread",
+      submissionId: "wrong",
+    })
+  ).answer;
+  assert.equal(incorrect.correct, false);
+  assert.ok(incorrect.feedback);
+  await assert.rejects(
+    async () =>
+      await act({
+        action: "submit",
+        attemptId: attempt.id,
+        questionId: "recognize",
+        response: "close",
+        submissionId: "retry",
+      }),
   );
-  const result = act({ action: "complete", attemptId: attempt.id });
+  const result = await act({ action: "complete", attemptId: attempt.id });
   assert.equal(result.attempt.status, "completed");
   assert.equal(result.review.algorithm, "fixed-v1");
   assert.ok(Date.parse(result.review.dueAt) > Date.now());
   assert.equal((result.review as any).modelAnswer, undefined);
   assert.ok(
-    getSecret<{ modelAnswer: string }>(a.user.id, "reviews", result.review.id)
-      .modelAnswer,
+    (
+      await getSecret<{
+        modelAnswer: string;
+      }>(a.user.id, "reviews", result.review.id)
+    ).modelAnswer,
   );
-  const state = getState(a.user.id);
+  const state = await getState(a.user.id);
   assert.equal(state.answers.length, 2);
   assert.equal(state.reviews.length, 1);
-  assert.throws(() =>
-    transaction(() =>
-      learningAction(b.user.id, {
-        action: "submit",
-        attemptId: attempt.id,
-        questionId: "recognize",
-        response: "close",
-        submissionId: "steal",
-      }),
-    ),
+  await assert.rejects(
+    async () =>
+      await transaction(
+        async () =>
+          await learningAction(b.user.id, {
+            action: "submit",
+            attemptId: attempt.id,
+            questionId: "recognize",
+            response: "close",
+            submissionId: "steal",
+          }),
+      ),
   );
-  const r = rev({
+  const r = await rev({
     action: "submit",
     cardId: result.review.id,
     response: "retrieval without source",
     submissionId: "review-first",
   });
   assert.ok(r.modelAnswer);
-  const rated = rev({ action: "rate", eventId: r.event.id, rating: "good" });
+  const rated = await rev({
+    action: "rate",
+    eventId: r.event.id,
+    rating: "good",
+  });
   assert.ok(Date.parse(rated.review.dueAt) > Date.now());
   assert.equal(
-    rev({ action: "rate", eventId: r.event.id, rating: "good" }).review.dueAt,
+    (await rev({ action: "rate", eventId: r.event.id, rating: "good" })).review
+      .dueAt,
     rated.review.dueAt,
   );
-  rev({
+  await rev({
     action: "reschedule",
     cardId: result.review.id,
     dueAt: "2030-11-18T12:00:00Z",
   });
   assert.equal(
-    getState(a.user.id).reviewEvents.filter((e) => e.kind === "reschedule")
-      .length,
+    (await getState(a.user.id)).reviewEvents.filter(
+      (e) => e.kind === "reschedule",
+    ).length,
     1,
   );
   assert.equal(
-    getState(a.user.id).reviewEvents.filter((e) => e.kind === "attempt").length,
+    (await getState(a.user.id)).reviewEvents.filter((e) => e.kind === "attempt")
+      .length,
     1,
   );
-  const retry = act({
-    action: "start",
-    lessonSlug: "familiarity-is-not-recall",
-  }).attempt;
+  const retry = (
+    await act({
+      action: "start",
+      lessonSlug: "familiarity-is-not-recall",
+    })
+  ).attempt;
   assert.notEqual(retry.id, attempt.id);
-  const recall = act({
-    action: "submit",
-    attemptId: retry.id,
-    questionId: "recall",
-    response: "The nucleus stores most DNA",
-    submissionId: "whole-retry-recall",
-  }).answer;
-  act({
+  const recall = (
+    await act({
+      action: "submit",
+      attemptId: retry.id,
+      questionId: "recall",
+      response: "The nucleus stores most DNA",
+      submissionId: "whole-retry-recall",
+    })
+  ).answer;
+  await act({
     action: "self-grade",
     answerId: recall.id,
     rating: "good",
     submissionId: "whole-retry-grade",
   });
   assert.equal(
-    act({
-      action: "submit",
-      attemptId: retry.id,
-      questionId: "recognize",
-      response: "close",
-      submissionId: "whole-retry-choice",
-    }).answer.correct,
+    (
+      await act({
+        action: "submit",
+        attemptId: retry.id,
+        questionId: "recognize",
+        response: "close",
+        submissionId: "whole-retry-choice",
+      })
+    ).answer.correct,
     true,
   );
-  act({ action: "complete", attemptId: retry.id });
+  await act({ action: "complete", attemptId: retry.id });
   assert.equal(
-    getState(a.user.id).answers.find((x) => x.id === incorrect.id)?.correct,
+    (await getState(a.user.id)).answers.find((x) => x.id === incorrect.id)
+      ?.correct,
     false,
   );
-  assert.equal(getState(a.user.id).lessonAttempts.length, 2);
+  assert.equal((await getState(a.user.id)).lessonAttempts.length, 2);
 });
-test("password change invalidates old sessions", () => {
-  const token = changePassword(
+test("password change invalidates old sessions", async () => {
+  const token = await changePassword(
     b.user.id,
     "private-password-456",
     "new-private-password",
   );
-  assert.equal(getUserByToken(b.token), null);
-  assert.equal(getUserByToken(token)?.id, b.user.id);
+  assert.equal(await getUserByToken(b.token), null);
+  assert.equal((await getUserByToken(token))?.id, b.user.id);
 });
 test("HTTP audio/export/delete require owner session and fresh password", async () => {
-  const c = signUp("c@example.test", "private-password-789", "C");
+  const c = await signUp("c@example.test", "private-password-789", "C");
   const cookie = `mqw_session=${c.token}`;
   const origin = "http://localhost";
   const voice =
@@ -305,7 +347,7 @@ test("HTTP audio/export/delete require owner session and fresh password", async 
     }),
   );
   assert.equal(badDelete.status, 401);
-  assert.equal(getUserByToken(c.token)?.id, c.user.id);
+  assert.equal((await getUserByToken(c.token))?.id, c.user.id);
   const deleted = await accountRoute.DELETE(
     new Request(`${origin}/api/account`, {
       method: "DELETE",
@@ -314,24 +356,24 @@ test("HTTP audio/export/delete require owner session and fresh password", async 
     }),
   );
   assert.equal(deleted.status, 200);
-  assert.equal(getUserByToken(c.token), null);
-  assert.equal(listEntities(c.user.id, "voiceAssets").length, 0);
+  assert.equal(await getUserByToken(c.token), null);
+  assert.equal((await listEntities(c.user.id, "voiceAssets")).length, 0);
   assert.equal(
-    db.prepare("SELECT id FROM users WHERE id=?").get(c.user.id),
+    await db.prepare("SELECT id FROM users WHERE id=?").get(c.user.id),
     undefined,
   );
 });
-
-test("interrupted drafts survive reload and progression cannot skip unanswered questions", () => {
-  const { attempt } = act({
+test("interrupted drafts survive reload and progression cannot skip unanswered questions", async () => {
+  const { attempt } = await act({
     action: "start",
     lessonSlug: "familiarity-is-not-recall",
   });
-  assert.throws(() =>
-    act({ action: "progress", attemptId: attempt.id, step: 3 }),
+  await assert.rejects(
+    async () =>
+      await act({ action: "progress", attemptId: attempt.id, step: 3 }),
   );
-  act({ action: "progress", attemptId: attempt.id, step: 1 });
-  act({
+  await act({ action: "progress", attemptId: attempt.id, step: 1 });
+  await act({
     action: "progress",
     attemptId: attempt.id,
     step: 1,
@@ -339,12 +381,13 @@ test("interrupted drafts survive reload and progression cannot skip unanswered q
     draftResponse: "A saved unfinished answer",
   });
   assert.equal(
-    getState(a.user.id).lessonAttempts.find((x) => x.id === attempt.id)
+    (await getState(a.user.id)).lessonAttempts.find((x) => x.id === attempt.id)
       ?.draftResponse,
     "A saved unfinished answer",
   );
-  assert.throws(() =>
-    act({ action: "progress", attemptId: attempt.id, step: 2 }),
+  await assert.rejects(
+    async () =>
+      await act({ action: "progress", attemptId: attempt.id, step: 2 }),
   );
   const body = {
     action: "submit",
@@ -353,35 +396,37 @@ test("interrupted drafts survive reload and progression cannot skip unanswered q
     response: "Genetic material",
     submissionId: "draft-submit",
   };
-  const first = act(body).answer;
+  const first = (await act(body)).answer;
   assert.equal(
-    act({ ...body, submissionId: "new-id-after-reload" }).answer.id,
+    (await act({ ...body, submissionId: "new-id-after-reload" })).answer.id,
     first.id,
   );
   assert.equal(
-    getState(a.user.id).lessonAttempts.find((x) => x.id === attempt.id)
+    (await getState(a.user.id)).lessonAttempts.find((x) => x.id === attempt.id)
       ?.draftResponse,
     null,
   );
-  assert.throws(() =>
-    act({ action: "progress", attemptId: attempt.id, step: 2 }),
+  await assert.rejects(
+    async () =>
+      await act({ action: "progress", attemptId: attempt.id, step: 2 }),
   );
-  act({
+  await act({
     action: "self-grade",
     answerId: first.id,
     rating: "good",
     submissionId: "draft-rating",
   });
   assert.equal(
-    act({ action: "progress", attemptId: attempt.id, step: 2 }).attempt.step,
+    (await act({ action: "progress", attemptId: attempt.id, step: 2 })).attempt
+      .step,
     2,
   );
-  updateEntity(a.user.id, "lessonAttempts", attempt.id, {
+  await updateEntity(a.user.id, "lessonAttempts", attempt.id, {
     contentVersion: "0.0.0",
   });
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "submit",
         attemptId: attempt.id,
         questionId: "recognize",
@@ -391,7 +436,6 @@ test("interrupted drafts survive reload and progression cannot skip unanswered q
     (e: unknown) => e instanceof ApiError && e.status === 409,
   );
 });
-
 test("same-origin guard accepts browser Host behind wildcard bind and refuses forged forwarded origin", () => {
   checkOrigin(
     new Request("http://0.0.0.0:3000/api/auth", {
@@ -421,22 +465,21 @@ test("same-origin guard accepts browser Host behind wildcard bind and refuses fo
     ),
   );
 });
-
-test("calibration refuses a prediction entered after scored quiz answers", () => {
-  const { attempt } = act({
+test("calibration refuses a prediction entered after scored quiz answers", async () => {
+  const { attempt } = await act({
     action: "start",
     lessonSlug: "metacognitive-calibration",
   });
-  act({
+  await act({
     action: "submit",
     attemptId: attempt.id,
     questionId: "organelle",
     response: "mitochondria",
     submissionId: "calibration-scored-first",
   });
-  assert.throws(
-    () =>
-      act({
+  await assert.rejects(
+    async () =>
+      await act({
         action: "submit",
         attemptId: attempt.id,
         questionId: "prediction",
@@ -446,7 +489,6 @@ test("calibration refuses a prediction entered after scored quiz answers", () =>
     (e: unknown) => e instanceof ApiError && e.status === 409,
   );
 });
-
 test("production owner setup requires the one-use secret and closes after registration", async () => {
   const keys = [
     "NODE_ENV",
@@ -470,18 +512,19 @@ test("production owner setup requires the one-use secret and closes after regist
     });
     delete process.env.MQW_APP_ORIGIN;
     delete process.env.MQW_SETUP_TOKEN_HASH;
-    assert.equal(registrationMode(), "closed");
-    assert.throws(() =>
-      signUp(
-        "production-owner@example.test",
-        "owner-private-password",
-        "Owner",
-      ),
+    assert.equal(await registrationMode(), "closed");
+    await assert.rejects(
+      async () =>
+        await signUp(
+          "production-owner@example.test",
+          "owner-private-password",
+          "Owner",
+        ),
     );
     process.env.MQW_SETUP_TOKEN_HASH = createHash("sha256")
       .update(setupToken)
       .digest("hex");
-    assert.equal(registrationMode(), "invite");
+    assert.equal(await registrationMode(), "invite");
     const capabilities = await (
       await route.GET(new Request("http://localhost/api/auth"))
     ).json();
@@ -510,18 +553,19 @@ test("production owner setup requires the one-use secret and closes after regist
       (await post({ ...values, setupToken: "tampered" })).status,
       403,
     );
-    assert.throws(() =>
-      signUp(
-        "another@example.test",
-        "owner-private-password",
-        "Other",
-        setupToken,
-      ),
+    await assert.rejects(
+      async () =>
+        await signUp(
+          "another@example.test",
+          "owner-private-password",
+          "Other",
+          setupToken,
+        ),
     );
     const accepted = await post({ ...values, setupToken });
     assert.equal(accepted.status, 200);
     assert.ok(accepted.headers.get("set-cookie")?.includes("; Secure"));
-    assert.equal(registrationMode(), "closed");
+    assert.equal(await registrationMode(), "closed");
     assert.ok((await post({ ...values, setupToken })).status >= 400);
     const login = await post({
       action: "sign-in",
@@ -534,21 +578,22 @@ test("production owner setup requires the one-use secret and closes after regist
         .data.capabilities.registration,
       "closed",
     );
-    const owner = signIn(values.email, values.password).user;
-    db.prepare("DELETE FROM users WHERE id=?").run(owner.id);
+    const owner = (await signIn(values.email, values.password)).user;
+    await db.prepare("DELETE FROM users WHERE id=?").run(owner.id);
     assert.equal(
-      registrationMode(),
+      await registrationMode(),
       "closed",
       "deleting the owner cannot reactivate a consumed setup link",
     );
-    assert.throws(() =>
-      signUp(values.email, values.password, "Owner", setupToken),
+    await assert.rejects(
+      async () =>
+        await signUp(values.email, values.password, "Owner", setupToken),
     );
     process.env.MQW_SETUP_TOKEN_HASH = createHash("sha256")
       .update("rotated-synthetic-setup-secret")
       .digest("hex");
     assert.equal(
-      registrationMode(),
+      await registrationMode(),
       "invite",
       "a deliberately rotated setup link can initialize a replacement owner",
     );
@@ -559,7 +604,6 @@ test("production owner setup requires the one-use secret and closes after regist
     }
   }
 });
-
 test("configured HTTPS origin remains authoritative behind an HTTP reverse proxy", () => {
   const previous = process.env.MQW_APP_ORIGIN;
   try {
@@ -601,9 +645,8 @@ test("configured HTTPS origin remains authoritative behind an HTTP reverse proxy
     else process.env.MQW_APP_ORIGIN = previous;
   }
 });
-
 test("streamed export preserves snapshot ownership, chunked base64 and explicit missing/partial audio", async () => {
-  const owner = signUp(
+  const owner = await signUp(
     "stream-owner@example.test",
     "stream-private-password",
     "Stream owner",
@@ -614,21 +657,23 @@ test("streamed export preserves snapshot ownership, chunked base64 and explicit 
     require("../src/app/api/export/route") as typeof import("../src/app/api/export/route");
   const bytes = Buffer.alloc(100001);
   for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
-  const full = transaction(() =>
-    writeVoice(
-      owner.user.id,
-      { title: "Chunked", mimeType: "audio/webm", size: bytes.length },
-      bytes,
-    ),
+  const full = await transaction(
+    async () =>
+      await writeVoice(
+        owner.user.id,
+        { title: "Chunked", mimeType: "audio/webm", size: bytes.length },
+        bytes,
+      ),
   );
-  const missing = transaction(() =>
-    writeVoice(
-      owner.user.id,
-      { title: "Missing later", mimeType: "audio/webm", size: 4 },
-      Buffer.from("four"),
-    ),
+  const missing = await transaction(
+    async () =>
+      await writeVoice(
+        owner.user.id,
+        { title: "Missing later", mimeType: "audio/webm", size: 4 },
+        Buffer.from("four"),
+      ),
   );
-  const before = createRecord(owner.user.id, "notes", {
+  const before = await createRecord(owner.user.id, "notes", {
     text: "before export snapshot",
   });
   const perform = () =>
@@ -645,7 +690,7 @@ test("streamed export preserves snapshot ownership, chunked base64 and explicit 
   const response = await perform();
   assert.equal(response.status, 200);
   assert.ok(response.body);
-  const later = createRecord(owner.user.id, "notes", {
+  const later = await createRecord(owner.user.id, "notes", {
     text: "after export snapshot",
   });
   rmSync(voicePath(owner.user.id, missing.id));
@@ -659,7 +704,7 @@ test("streamed export preserves snapshot ownership, chunked base64 and explicit 
     false,
   );
   const otherNoteIds = new Set(
-    getState(a.user.id).notes.map((note) => note.id),
+    (await getState(a.user.id)).notes.map((note) => note.id),
   );
   assert.ok(otherNoteIds.size > 0);
   assert.equal(

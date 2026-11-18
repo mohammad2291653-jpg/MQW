@@ -19,8 +19,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     return json({
-      user: getUserByToken(sessionToken(request)),
-      capabilities: { registration: registrationMode() },
+      user: await getUserByToken(sessionToken(request)),
+      capabilities: { registration: await registrationMode() },
     });
   } catch (error) {
     return fail(error);
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     checkOrigin(request);
     const b = await readBody(request);
     if (b.action === "sign-out") {
-      signOut(sessionToken(request));
+      await signOut(sessionToken(request));
       return json({ user: null }, 200, { "Set-Cookie": sessionCookie("", 0) });
     }
     rateLimit(
@@ -54,8 +54,8 @@ export async function POST(request: Request) {
       throw new ApiError("عملية الدخول غير معروفة.");
     const result =
       b.action === "sign-up"
-        ? signUp(b.email, b.password, b.name, b.setupToken)
-        : signIn(b.email, b.password);
+        ? await signUp(b.email, b.password, b.name, b.setupToken)
+        : await signIn(b.email, b.password);
     return json({ user: result.user }, 200, {
       "Set-Cookie": sessionCookie(result.token),
     });
