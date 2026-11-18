@@ -13,7 +13,6 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/health
-    maxShutdownDelaySeconds: 30
     disk:
       name: mqw-private-data
       mountPath: /var/data
