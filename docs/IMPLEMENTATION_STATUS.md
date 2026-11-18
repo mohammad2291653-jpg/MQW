@@ -1,12 +1,12 @@
 # Implementation status — 18 November 2026
 
-MQW is a working application with an implemented dual-backend repository. This checkpoint does not claim a verified public deployment. A connected Supabase project, schema preparation, local tests and a public HTTPS application are separate release steps. The owner authorized implementation after planning; the source product documents remain unchanged.
+MQW is live on Render Free with Supabase Free private PostgreSQL. Application commit `35aac55` passed the recorded hosted HTTPS, ownership, redeployment-persistence and cleanup checks. The actual owner's account has not been created; its verified private invitation remains unconsumed. Local SQLite remains supported. The source product documents remain unchanged. See [release verification](RELEASE_VERIFICATION.md) for actual proof and deferred operating limits.
 
 | Area               | Implemented behavior                                                                                                                                                                                                                                        |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Accounts and shell | Email/password with scrypt, opaque hashed sessions, protected server routes, account isolation, password changes and one-use owner invitations. Email verification/reset delivery is not configured.                                                        |
 | Persistence        | Async SQLite adapter for local/tests; async PostgreSQL adapter for cloud records, sessions and audio. Awaited transactions, shared module-safe connections/context, serialized evidence transitions and transaction-local owner scope.                      |
-| Cloud security     | Private `mqw_private` runtime schema and restricted `mqw_app` role; owner RLS for records/idempotency/audio. Custom cookie identity is retained; this is not a Supabase Auth migration. Actual hosted permissions/connectivity must be verified separately. |
+| Cloud security     | Private `mqw_private` schema, restricted `mqw_app` role and owner RLS for records/idempotency/audio. Actual runtime strict-TLS connectivity and tested HTTPS A/B isolation passed. Custom cookie identity is retained; this is not a Supabase Auth migration. |
 | Learning           | Four versioned lessons with concealed sources, persisted drafts/answers, reasoned feedback, honest self-check, whole-lesson retries and real review creation.                                                                                               |
 | Reviews            | Durable cards, ratings and rescheduling history. Documented `fixed-v1`, not FSRS or personalized AI.                                                                                                                                                        |
 | Palace             | Illustrated five-locus house, orientation, editable associations, private snapshots, separate route/concept trials, explicit skips, self-ratings and scheduled retests.                                                                                     |
@@ -21,18 +21,25 @@ MQW is a working application with an implemented dual-backend repository. This c
 
 ## Verification checkpoint
 
-After the async repository and shared-connection update, TypeScript and all **37 current local unit/integration tests** passed. These tests deliberately force temporary SQLite storage and remove remote database settings. Coverage includes async transaction waiting/rollback/serialization, module-reload connection/context/mutex sharing, isolation, learning/reviews, drafts, private audio/export/deletion, palace retries, timezone semantics and local backup integrity. These are not remote PostgreSQL integration results.
+TypeScript, the corrected production build and all **38 local unit/integration tests** passed. These tests deliberately force temporary SQLite storage and remove remote database settings. Coverage includes awaited transactions/rollback/serialization, module-reload sharing, isolation, learning/reviews, drafts, private audio/export/deletion, palace retries, timezone semantics and local backup integrity. The suite includes an 18-process cold-initialization regression, with the busy timeout set before WAL/schema initialization. These are distinct from remote PostgreSQL results.
 
 After the async repository migration, all **9 Chromium browser journey tests** passed against temporary SQLite storage. This run preceded the final module-shared connection/cache correction. After that correction, the desktop palace journey passed separately (**1/1**), with neither startup-cleanup warning observed. Its temporary development server was stopped after the run. Automated WCAG checks previously covered the six primary page groups. Reports live in `playwright-report/`, with the page audits in `artifacts/accessibility-audit.json`.
 
-The runtime schema passed **45 isolated PGlite PostgreSQL policy/constraint checks**. The release operator also confirmed that both runtime migrations are applied to the selected Supabase Free project, all **7 runtime tables enable and force RLS**, and hosted security advisors report **0 security findings**. These checks do not establish application TLS/pooler connectivity, authenticated remote flows or restart persistence. The old normalized proposal and its tests are archived and do not establish cloud-runtime readiness.
+The runtime schema passed **45 isolated PGlite PostgreSQL policy/constraint checks**. Both runtime migrations are applied to Supabase Free, all **7 runtime tables enable and force RLS**, and the security-advisor checkpoint reported **0 security findings**. A separate real local PostgreSQL 17.12 CA/SAN-verified TLS smoke passed with restricted `mqw_app`, covering learning/reviews, palace, owner isolation, bytea/export, rollback and deletion. Its temporary synthetic resources were removed. The archived normalized proposal is not runtime proof.
 
-## Remaining release evidence
+## Hosted release verification
 
-- Successful public HTTPS deployment, fixed-origin validation, invitation-protected registration and stateless private-route probes.
-- Actual runtime-role TLS/pooler access and remote RLS/Data API isolation.
-- Persistence of real synthetic test events and audio after restarting the deployed app.
-- A verified private PostgreSQL backup/restore procedure and retention decision; free-plan pauses/quotas remain operational limits.
-- Physical iPhone Safari/installed-PWA microphone, interruption and accessibility checks. No WebKit result is claimed from an environment without its required libraries.
+The final deployment reached Live; health returned 200 through strict-TLS PostgreSQL and restricted `mqw_app`. All **21 final anonymous HTTPS probes** passed, including explicit one-year HSTS/includeSubDomains. Anonymous desktop/mobile inspections observed Arabic RTL, no horizontal overflow and no page/console errors in the inspected flows.
 
-No paid service or external AI activation is implied by these implementation results. The free-cloud design uses durable PostgreSQL storage and does not treat Render's ephemeral filesystem as permanent data storage.
+Operator-seeded synthetic accounts passed HTTPS L1/review/deduplication, five-locus blind palace/reveal/rating, note/task CRUD, A/B denial, and 1 MiB + 5 byte audio playback/SHA-256/streamed-export checks. Canonical full-state hashes for both accounts and original audio/export content matched after real redeployment. An existing session cookie still authenticated; session protections and sign-out revocation were verified separately.
+
+Password-confirmed cleanup then removed the synthetic accounts. Old cookies and deleted credentials returned 401; independent database counts confirmed zero users, sessions, records, voice_blobs, idempotency and setup_tokens. Owner registration without its invitation returned 403, and the valid invitation remains unconsumed. No actual owner account or fabricated personal history remains.
+
+## Remaining operating limits
+
+- PostgreSQL offsite backup/restore and retention still need operational verification; no automatic cloud backup is claimed.
+- Physical iPhone Safari/installed-PWA microphone, interruption and manual accessibility checks remain unverified. No unavailable WebKit pass is claimed.
+- Email verification/reset delivery is unconfigured; notifications remain foreground-only.
+- Free-plan sleep, cold starts, inactivity pauses and quotas remain service limits. The tested rescheduled review proves data flow, not human delayed retention.
+
+The release uses no paid compute/disk/IPv4 add-on or external AI. Durable PostgreSQL records/audio do not depend on Render's ephemeral filesystem.

@@ -1,6 +1,6 @@
 # Running and hosting MQW
 
-The selected hosting path is **Render Free + Supabase Free private PostgreSQL**. Local SQLite remains supported. The Free Supabase project and its private schema exist; hosted application pooler connectivity and restart verification are still separate gates. Neither schema creation nor a successful build alone proves the application is live. The current `render.yaml` configures Free compute, PostgreSQL storage and no persistent disk.
+The selected hosting path is **Render Free + Supabase Free private PostgreSQL**. Local SQLite remains supported. Application commit `35aac55` reached Live with verified runtime TLS/pooler connectivity, HTTPS behavior, real redeployment persistence and synthetic-data cleanup. The current `render.yaml` configures Free compute, PostgreSQL storage and no persistent disk. Future releases must repeat appropriate verification; a build trigger alone is not proof of deployment.
 
 ## Local development
 
@@ -38,7 +38,7 @@ Use the project's shared Supavisor **Session Pooler, port 5432**, for a persiste
 
 The seven private tables enable and force RLS. Records, idempotency and audio use transaction-local `mqw.user_id` established from the verified session; pre-auth account/session/setup operations are restricted to the trusted backend role. Browser Data API roles have no private-schema access. See [runtime details](../supabase/runtime/README.md) and [architecture](ARCHITECTURE.md).
 
-Remote database checks confirmed all seven FORCE-RLS tables and denied anonymous/authenticated schema usage; the security advisor reported no findings at that checkpoint. This does not replace restricted application-login, API or hosting verification.
+Remote database checks confirmed all seven FORCE-RLS tables and denied anonymous/authenticated schema usage; the security advisor reported no findings at that checkpoint. The recorded release separately passed restricted-role application connectivity, seeded HTTPS API flows and replacement-instance persistence; database and application evidence remain distinct.
 
 The Supabase CLI changes between versions. Discover actual commands and flags with `--help`; generate future migration filenames with `supabase migration new`. CLI v3 defaults to local targets, so remote application and confirmation must be explicit. Never run reset commands against a hosted personal database to repair a configuration issue.
 
@@ -81,9 +81,11 @@ Run checks appropriate to the changed backend. The recorded pre-conversion SQLit
 MQW_PGLITE_MODULE=/absolute/path/to/node_modules/@electric-sql/pglite node scripts/test-postgres-rls.mjs
 ```
 
-That runner accesses no hosted project or credentials. Remote acceptance separately requires restricted-role connectivity, absence of browser Data API access, A/B account/audio isolation, idempotent lesson/review/palace persistence, export/delete and a real service restart with preserved data. A build trigger or healthy database does not establish a live application; confirm the deploy reaches its terminal live state and exercise it.
+That runner accesses no hosted project or credentials. Every hosted release separately needs restricted-role connectivity, absence of browser Data API access, A/B account/audio isolation, idempotent lesson/review/palace persistence, export/delete and instance replacement with preserved data. The recorded release completed these bounded checks: 21/21 final anonymous HTTPS probes passed, strict-TLS runtime health returned 200, seeded HTTPS flows passed, both accounts' canonical state hashes and audio/export bytes matched after redeployment, and a preexisting cookie still authenticated. HSTS was verified with `max-age=31536000; includeSubDomains`.
 
-The current local regression checkpoint passed 37 SQLite/async-repository tests, nine Chromium journeys and one dedicated cache-reproduction browser check. A separate synthetic loopback-only application smoke passed against real local PostgreSQL 17.12 with CA/SAN-verified TLS and restricted `mqw_app`: concurrent lesson start/submission deduplication, lessons/reviews, private five-locus palace reveal/rating, A/B isolation/context reset, 1 MiB + 5 byte audio playback/export, rollback and password-confirmed deletion cascades. The temporary server, data and credentials were removed. This proves local wire/adapter behavior, not a connection from the hosted application to Supabase or a live Render deployment.
+Recorded local checks passed 38 SQLite/async-repository tests, nine Chromium journeys and one dedicated cache-reproduction browser check. TypeScript and the corrected production build passed; the local suite includes the 18-process cold-initialization regression. A separate synthetic loopback-only application smoke passed against real local PostgreSQL 17.12 with CA/SAN-verified TLS and restricted `mqw_app`: concurrent lesson start/submission deduplication, lessons/reviews, private five-locus palace reveal/rating, A/B isolation/context reset, 1 MiB + 5 byte audio playback/export, rollback and password-confirmed deletion cascades. Its temporary resources were removed. The live results are separately recorded in [release verification](RELEASE_VERIFICATION.md).
+
+The release's synthetic accounts were deleted through password-confirmed APIs; old cookies and deleted credentials then returned 401. Independent database counts confirmed zero users, sessions, records, voice_blobs, idempotency and setup_tokens. The actual owner still needs to create their account through the unconsumed private invitation. Do not publish that invitation or treat a synthetic test account as the owner's account.
 
 Chromium mobile layouts and axe checks do not certify physical iPhone Safari, installed PWA, microphone interruption or all assistive-technology behavior. Record checks not run instead of reporting universal device support.
 

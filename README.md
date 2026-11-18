@@ -1,6 +1,6 @@
 # MQW
 
-Current hosting decision: **Render Free + Supabase Free private PostgreSQL**. See [the free hosting plan](docs/FREE_HOSTING_PLAN.md). The current `render.yaml` selects Free compute, explicit PostgreSQL storage and no persistent disk. A Free Supabase project and its private runtime schema exist, but hosted application connectivity, a live application and restart persistence are not claimed until hosted verification completes.
+Current hosting: **Render Free + Supabase Free private PostgreSQL**, with no persistent Render disk. Application commit `35aac55` reached Live and passed hosted HTTPS, ownership, redeployment-persistence and synthetic-data cleanup checks. The actual owner's account has not been created and its private invitation remains unconsumed. See [release verification](docs/RELEASE_VERIFICATION.md) and [free hosting limits](docs/FREE_HOSTING_PLAN.md).
 
 Arabic-first private learning application. Next.js 16, React 19, TypeScript and Node.js 24, with asynchronous repositories for local SQLite or private PostgreSQL. Email/password authentication remains the application's owner-only cookie/session system; PostgreSQL mode does not switch to Supabase Auth.
 
@@ -39,13 +39,13 @@ npm run test:e2e
 npm run build
 ```
 
-Current local regression checkpoint: **37/37 SQLite/async-repository tests, 9/9 Chromium browser journeys, one dedicated cache-reproduction browser check, and TypeScript passed**. These local checks do not certify hosted connectivity or physical-device behavior. Automated axe reports remain bounded to the screens tested; they do not replace manual accessibility review.
+Recorded local regression evidence: **38/38 SQLite/async-repository tests, 9/9 Chromium browser journeys, one dedicated cache-reproduction browser check, TypeScript and the corrected production build passed**. The 38-test suite includes 18 fresh-process cold SQLite initialization. These checks cover their recorded phases; physical-device behavior is not certified. Automated axe reports remain bounded to the screens tested.
 
 The private PostgreSQL template passed **45 role/RLS/ownership/cascade checks** in isolated PGlite PostgreSQL. An additional **real local PostgreSQL 17.12 wire/TLS smoke test passed** using a restricted `mqw_app` role, verified CA/SAN, and synthetic loopback-only data. It covered concurrent lesson start/submission deduplication, lessons/reviews, a private five-locus palace trial with reveal/rating, A/B isolation and owner-context reset, 1 MiB + 5 byte audio playback/export, rollback, and password-confirmed cascading deletion. Its temporary server, data and credentials were removed. This is application-adapter evidence against local PostgreSQL, not proof of a Supabase or Render application connection.
 
-Hosted deployment verification remains a separate gate; consult [implementation status](docs/IMPLEMENTATION_STATUS.md) and actual command results before reporting a release complete.
+Hosted verification additionally passed **21/21 final anonymous HTTPS probes**, strict-TLS private PostgreSQL access, seeded-account learning/review/palace/organizer/audio/export flows, A/B access denial, cookie protection and session revocation. Full-state hashes for both synthetic accounts and original audio/export bytes matched after a real application redeployment; an existing session cookie remained valid. HSTS was verified with a one-year max-age and includeSubDomains. See [release verification](docs/RELEASE_VERIFICATION.md) for scope and deferred checks.
 
-The remote database migration check confirmed seven FORCE-RLS tables, no anonymous/authenticated schema access, and no security-advisor findings at that checkpoint. This is database evidence, not a pass for hosted application flows.
+The remote database migration check confirmed seven FORCE-RLS tables, no anonymous/authenticated schema access, and no security-advisor findings at that checkpoint. After password-confirmed deletion of the synthetic accounts, their old cookies/credentials failed and independent database counts confirmed zero application accounts, sessions, evidence, audio, idempotency and consumed setup tokens. No real owner account or sample performance was left behind.
 
 Unit/integration tests exercise real SQLite isolation, passwords/sessions, request origins, duplicate submissions, drafts, grading boundaries, palace snapshots, private audio, export and deletion. Browser tests exercise the actual lesson/review/palace/organizer journeys and narrow layouts. The rescheduled-to-now review test proves persistence and flow; it is **not** a human delayed-retention experiment.
 
@@ -60,7 +60,7 @@ Run `node scripts/audit.mjs` while the dev server is open to audit primary scree
 - There is no full offline synchronization, 3D palace, transcription, document ingestion or external-calendar integration.
 - Chromium browser tests include 390px mobile layouts; they do not certify physical iPhone Safari or installed iOS PWA behavior. Real-device microphone/interruption and PWA testing remain required before production acceptance.
 - WebKit was downloaded in this workspace, but required system libraries were unavailable; no WebKit pass is claimed.
-- A Free Supabase project has been created. The selected deployment uses no paid compute, disk, IPv4 add-on, or external AI. Build success and a healthy database alone do not establish a live application.
+- The verified deployment uses Free Render compute and Supabase Free, with no paid disk, IPv4 add-on or external AI. Free-service sleep, cold starts, pauses and quotas remain operating limits.
 
 Set `MQW_OWNER_EMAIL` before public hosting and `MQW_APP_ORIGIN` to the exact HTTPS origin behind a proxy. Production cookies require HTTPS. Read [deployment](docs/DEPLOYMENT.md) and [security](docs/SECURITY.md) before putting real personal data on a hosted instance.
 
