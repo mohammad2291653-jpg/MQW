@@ -194,6 +194,17 @@ export async function verifyDeployment(value, options = {}) {
     "/study",
   ]) {
     const page = await probe(path);
+    // Next.js may have started streaming the document before an async auth
+    // redirect resolves. In that case it deliberately returns 200 with a
+    // framework redirect instruction; the private API is checked separately.
+    const streamedRedirect =
+      page.response.status === 200 &&
+      /NEXT_REDIRECT;replace;\/sign-in;30[37];/.test(page.text()) &&
+      /no-store/i.test(page.response.headers.get("cache-control") || "");
+    if (streamedRedirect) {
+      pass(`${path} routes anonymous visitors to sign-in (streamed redirect)`);
+      continue;
+    }
     requireCheck(
       [301, 302, 303, 307, 308].includes(page.response.status),
       `${path}: a private page did not redirect an anonymous visitor.`,

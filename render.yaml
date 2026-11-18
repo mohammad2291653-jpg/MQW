@@ -1,3 +1,6 @@
+# OPTIONAL PAID template. The owner has selected FREE hosting instead.
+# Do not apply this template for the free-only deployment; a durable remote
+# database/storage adapter must be completed before removing the local disk.
 # Private, single-instance MQW hosting. This file creates a NEW service only.
 # Existing services in the workspace are unrelated and must not be adopted.
 services:

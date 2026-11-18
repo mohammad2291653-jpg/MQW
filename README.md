@@ -1,5 +1,7 @@
 # MQW
 
+Current hosting decision: **free hosting requested**. See [the free hosting plan](docs/FREE_HOSTING_PLAN.md). The paid `render.yaml` remains an optional template and has not been applied. A real remote database/private-storage adapter is required before deploying on an ephemeral free service.
+
 Arabic-first private learning application. Next.js 16, React 19, TypeScript, Node.js 24 and a persistent SQLite backend.
 
 ## Run
