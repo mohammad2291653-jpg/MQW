@@ -82,9 +82,12 @@ function initialize(): SharedDatabase {
     );
   } else {
     mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
-    value.sqlite = new DatabaseSync(resolve(DATA_DIR, "mqw.sqlite"));
-    value.sqlite
-      .exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+    value.sqlite = new DatabaseSync(resolve(DATA_DIR, "mqw.sqlite"), {
+      timeout: 5000,
+    });
+    // Install lock waiting before WAL mode or any schema work in concurrent build workers.
+    value.sqlite.exec("PRAGMA busy_timeout=5000;");
+    value.sqlite.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,name TEXT NOT NULL,password_hash TEXT NOT NULL,preferences TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,collection TEXT NOT NULL,data TEXT NOT NULL,secret TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
