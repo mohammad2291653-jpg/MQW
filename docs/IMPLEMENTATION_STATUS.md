@@ -1,6 +1,6 @@
 # Implementation status — 18 November 2026
 
-This is a working local build, not a certified production deployment. The owner authorized implementation after reviewing the planning response. The five source documents are preserved unchanged.
+This is a working application with verified container deployment preparation; no live cloud deployment is claimed until its URL and persistent data are checked. The owner authorized implementation after reviewing the planning response. The five source documents are preserved unchanged.
 
 | Area | Actual state |
 | --- | --- |
@@ -16,7 +16,7 @@ This is a working local build, not a certified production deployment. The owner 
 | External AI | No provider/configuration/calls. Entire baseline works without it. |
 | Notifications | Explicit permission, important deadlines and at most one habit reminder per day, while app is open. No background push service. |
 
-Verified locally: production build and TypeScript; 24 unit/integration tests; automated WCAG checks of the six primary page groups. All 9 Chromium browser journey tests passed in the final sequential suite. Reports are in `playwright-report/`; `artifacts/accessibility-audit.json` records the six automated page audits.
+Verified locally: production build and TypeScript; 32 unit/integration tests; automated WCAG checks of the six primary page groups. All 9 Chromium browser journey tests passed in the final sequential suite. Reports are in `playwright-report/`; `artifacts/accessibility-audit.json` records the six automated page audits.
 
 Not accepted as production yet: physical iPhone Safari/installed PWA and microphone interruption tests; HTTPS hosting and persistence/backup decisions; email ownership verification/reset delivery. WebKit browser libraries were unavailable in this execution environment, so no WebKit result is claimed.
 

@@ -21,6 +21,8 @@ RUN --mount=type=secret,id=mqw_build_ca \
     npm ci --no-audit --no-fund \
     && npm run build \
     && npm prune --omit=dev --no-audit --no-fund \
+    && rm -rf node_modules/@playwright node_modules/playwright node_modules/playwright-core node_modules/@axe-core node_modules/tsx \
+    && rm -f node_modules/.bin/playwright node_modules/.bin/playwright-core node_modules/.bin/tsx \
     && rm -rf .next/cache /root/.npm \
     && mkdir -p /runtime/scripts \
     && mv node_modules .next public package.json package-lock.json next.config.ts /runtime/ \

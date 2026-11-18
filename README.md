@@ -35,7 +35,7 @@ npm run test:e2e
 npm run build
 ```
 
-Latest local verification: **24/24 unit/integration tests, 9/9 Chromium browser journey tests, TypeScript and production build passed**. Automated axe WCAG checks reported no violations on the six tested primary screen groups; that does not replace manual accessibility or physical-device testing. Production dependency audit reported zero known vulnerabilities.
+Latest local verification: **32/32 unit/integration tests, 9/9 Chromium browser journey tests, TypeScript and production build passed**. Automated axe WCAG checks reported no violations on the six tested primary screen groups; that does not replace manual accessibility or physical-device testing. Production dependency audit reported zero known vulnerabilities.
 
 Unit/integration tests exercise real SQLite isolation, passwords/sessions, request origins, duplicate submissions, drafts, grading boundaries, palace snapshots, private audio, export and deletion. Browser tests exercise the actual lesson/review/palace/organizer journeys and narrow layouts. The rescheduled-to-now review test proves persistence and flow; it is **not** a human delayed-retention experiment.
 

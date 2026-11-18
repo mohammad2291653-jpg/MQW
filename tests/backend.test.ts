@@ -1,6 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "mqw-test-"));
@@ -600,4 +600,108 @@ test("configured HTTPS origin remains authoritative behind an HTTP reverse proxy
     if (previous === undefined) delete process.env.MQW_APP_ORIGIN;
     else process.env.MQW_APP_ORIGIN = previous;
   }
+});
+
+test("streamed export preserves snapshot ownership, chunked base64 and explicit missing/partial audio", async () => {
+  const owner = signUp(
+    "stream-owner@example.test",
+    "stream-private-password",
+    "Stream owner",
+  );
+  const { writeVoice, voicePath } =
+    require("../src/lib/server/voice") as typeof import("../src/lib/server/voice");
+  const exportRoute =
+    require("../src/app/api/export/route") as typeof import("../src/app/api/export/route");
+  const bytes = Buffer.alloc(100001);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = i % 251;
+  const full = transaction(() =>
+    writeVoice(
+      owner.user.id,
+      { title: "Chunked", mimeType: "audio/webm", size: bytes.length },
+      bytes,
+    ),
+  );
+  const missing = transaction(() =>
+    writeVoice(
+      owner.user.id,
+      { title: "Missing later", mimeType: "audio/webm", size: 4 },
+      Buffer.from("four"),
+    ),
+  );
+  const before = createRecord(owner.user.id, "notes", {
+    text: "before export snapshot",
+  });
+  const perform = () =>
+    exportRoute.POST(
+      new Request("http://localhost/api/export", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost",
+          cookie: `mqw_session=${owner.token}`,
+        },
+        body: JSON.stringify({ password: "stream-private-password" }),
+      }),
+    );
+  const response = await perform();
+  assert.equal(response.status, 200);
+  assert.ok(response.body);
+  const later = createRecord(owner.user.id, "notes", {
+    text: "after export snapshot",
+  });
+  rmSync(voicePath(owner.user.id, missing.id));
+  const payload = await response.json();
+  assert.equal(payload.user.id, owner.user.id);
+  assert.ok(
+    payload.state.notes.some((note: { id: string }) => note.id === before.id),
+  );
+  assert.equal(
+    payload.state.notes.some((note: { id: string }) => note.id === later.id),
+    false,
+  );
+  const otherNoteIds = new Set(
+    getState(a.user.id).notes.map((note) => note.id),
+  );
+  assert.ok(otherNoteIds.size > 0);
+  assert.equal(
+    payload.state.notes.some((note: { id: string }) =>
+      otherNoteIds.has(note.id),
+    ),
+    false,
+  );
+  const audio = payload.voiceFiles.find(
+    (file: { id: string }) => file.id === full.id,
+  );
+  assert.deepEqual(Buffer.from(audio.content, "base64"), bytes);
+  assert.equal(audio.error, undefined);
+  assert.notEqual(audio.complete, false);
+  assert.ok(
+    payload.voiceFiles.find((file: { id: string }) => file.id === missing.id)
+      .error,
+  );
+  const partial = await perform();
+  const reader = partial.body!.getReader();
+  const chunks: Uint8Array[] = [];
+  const decoder = new TextDecoder();
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) throw new Error("missing audio prefix");
+    chunks.push(result.value);
+    if (
+      decoder.decode(result.value).includes(`"id":"${full.id}"`) &&
+      decoder.decode(result.value).endsWith('"content":"')
+    )
+      break;
+  }
+  truncateSync(voicePath(owner.user.id, full.id), 16);
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) break;
+    chunks.push(result.value);
+  }
+  const interrupted = JSON.parse(
+    Buffer.concat(chunks).toString("utf8"),
+  ).voiceFiles.find((file: { id: string }) => file.id === full.id);
+  assert.equal(interrupted.complete, false);
+  assert.ok(interrupted.error);
+  assert.equal(Buffer.from(interrupted.content, "base64").length, 16);
 });
