@@ -1,16 +1,16 @@
 -- PROPOSAL ONLY — NOT APPLIED. Requires explicit owner approval before use.
 --
 -- Purpose: enable MQW 90 private progress photos in PostgreSQL (cloud) mode.
--- Today, cloud mode refuses photo uploads (HTTP 501) instead of silently using
--- another store. All other MQW 90 data already lives in mqw_private.records and
--- needs NO schema change.
+-- The application already contains the PostgreSQL code path (src/lib/server/media.ts,
+-- export streaming). It detects this table at runtime; until it exists, cloud mode
+-- refuses photo uploads (HTTP 501). All other MQW 90 data already lives in
+-- mqw_private.records and needs NO schema change.
 --
 -- Before applying (see docs/MQW90.md → "Production gate"):
 --   1. Take and verify a database-native backup, and test a restore.
 --   2. Generate a real migration with the Supabase CLI and paste this reviewed SQL.
 --   3. Apply as the migration administrator, never as mqw_app.
---   4. Add the server branch for postgres in src/lib/server/media.ts and the
---      chunked export path (mirroring voice_blobs) and test with synthetic accounts.
+--   4. Verify with synthetic accounts (upload, owner-only read, export, delete).
 --   5. Quota impact: photo bytes count against the database quota (Free tier is small).
 begin;
 

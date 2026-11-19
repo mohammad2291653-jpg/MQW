@@ -425,6 +425,30 @@ export async function savePreferences(
     .run(JSON.stringify(values), userId);
   return values;
 }
+let mediaTableSeen = false;
+let mediaTableCheckedAt = 0;
+/**
+ * Private photo bytes need a private store: local files (SQLite) or the
+ * owner-approved `mqw_private.media_blobs` table (PostgreSQL). Until that
+ * migration exists, cloud photo features stay disabled automatically.
+ */
+export async function privatePhotosAvailable(): Promise<boolean> {
+  if (storageBackend === "sqlite") return true;
+  if (mediaTableSeen) return true;
+  if (Date.now() - mediaTableCheckedAt < 60000) return false;
+  mediaTableCheckedAt = Date.now();
+  try {
+    const row = (
+      await query(
+        "SELECT to_regclass('mqw_private.media_blobs') IS NOT NULL AS ok",
+      )
+    ).rows[0];
+    mediaTableSeen = row?.ok === true;
+  } catch {
+    mediaTableSeen = false;
+  }
+  return mediaTableSeen;
+}
 export async function getState(userId: string): Promise<AppState> {
   return withOwner(userId, async () => {
     const collections = [
@@ -449,7 +473,7 @@ export async function getState(userId: string): Promise<AppState> {
     const result: Record<string, unknown> = {
       preferences: await preferences(userId),
       // Private photo bytes are only enabled where a private store exists (local files).
-      capabilities: { privatePhotos: storageBackend === "sqlite" },
+      capabilities: { privatePhotos: await privatePhotosAvailable() },
     };
     for (const collection of collections) result[collection] = [];
     const rows = await db

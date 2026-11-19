@@ -5,9 +5,10 @@
  * permissions and are only streamed through an authenticated, owner-checked
  * route with `no-store`. There is no public URL, CDN link or thumbnail service.
  *
- * Cloud (PostgreSQL) mode: disabled until the owner approves a separate
- * migration for a private media table (see supabase/proposals/). Uploads are
- * refused instead of silently using another store.
+ * Cloud (PostgreSQL) mode: bytes live in `mqw_private.media_blobs`, bound to
+ * the owning record by a composite foreign key with owner RLS. The feature is
+ * detected at runtime and stays disabled (HTTP 501) until the owner-approved
+ * migration (supabase/proposals/mqw90_private_media.sql) has been applied.
  *
  * Metadata hygiene: the browser re-encodes images before upload, and the server
  * independently strips JPEG APP1–APP15/COM segments (EXIF, GPS, XMP, comments)
@@ -22,6 +23,8 @@ import {
   DATA_DIR,
   deleteEntity,
   listEntities,
+  privatePhotosAvailable,
+  query,
   requireEntity,
   storageBackend,
   transaction,
@@ -33,7 +36,7 @@ import type { Entity, EvoPhoto } from "../types";
 
 export const PHOTO_FILE_LIMIT = 8 * 1024 * 1024;
 const PHOTO_ACCOUNT_LIMIT = 300 * 1024 * 1024;
-export const photosEnabled = () => storageBackend === "sqlite";
+export const photosEnabled = privatePhotosAvailable;
 
 export function mediaDir(userId: string) {
   if (!/^[\w-]+$/.test(userId)) throw new ApiError("الحساب غير صالح.");
@@ -43,8 +46,8 @@ export function photoPath(userId: string, id: string) {
   if (!/^[\w-]+$/.test(id)) throw new ApiError("الصورة غير صالحة.");
   return join(mediaDir(userId), id);
 }
-function requireEnabled() {
-  if (!photosEnabled())
+async function requireEnabled() {
+  if (!(await photosEnabled()))
     throw new ApiError(
       "حفظ الصور الخاصة غير مفعّل في الاستضافة السحابية بعد. يتطلب ذلك ترحيل قاعدة بيانات يوافق عليه صاحب المشروع.",
       501,
@@ -143,7 +146,7 @@ export async function savePhoto(
     height?: unknown;
   },
 ): Promise<EvoPhoto> {
-  requireEnabled();
+  await requireEnabled();
   if (!raw.length || raw.length > PHOTO_FILE_LIMIT)
     throw new ApiError("حجم الصورة يجب ألا يتجاوز 8 ميغابايت.");
   const mimeType = sniffImage(raw);
@@ -166,6 +169,15 @@ export async function savePhoto(
   };
   return withOwner(userId, () =>
     transaction(async () => {
+      if (storageBackend === "postgres") {
+        // Serialize this owner's uploads so concurrent requests cannot exceed the quota.
+        const owner = await query(
+          "SELECT id FROM mqw_private.users WHERE id=$1 FOR UPDATE",
+          [userId],
+        );
+        if (!owner.rowCount)
+          throw new ApiError("يرجى تسجيل الدخول للمتابعة.", 401);
+      }
       await checkQuota(userId, bytes.length);
       const photo = await createEntity<EvoPhoto>(userId, "evoPhotos", {
         pillar,
@@ -177,6 +189,13 @@ export async function savePhoto(
         width: dim(meta.width),
         height: dim(meta.height),
       });
+      if (storageBackend === "postgres") {
+        await query(
+          "INSERT INTO mqw_private.media_blobs(user_id,asset_id,bytes) VALUES($1,$2,$3)",
+          [userId, photo.id, bytes],
+        );
+        return photo;
+      }
       await mkdir(mediaDir(userId), { recursive: true, mode: 0o700 });
       try {
         await writeFile(photoPath(userId, photo.id), bytes, {
@@ -193,7 +212,7 @@ export async function savePhoto(
 }
 
 export async function readPhoto(userId: string, id: string) {
-  requireEnabled();
+  await requireEnabled();
   return withOwner(userId, async () => {
     const photo = await requireEntity<EvoPhoto>(userId, "evoPhotos", id);
     if (
@@ -202,6 +221,16 @@ export async function readPhoto(userId: string, id: string) {
       photo.size > PHOTO_FILE_LIMIT
     )
       throw new ApiError("بيانات الصورة غير صالحة.", 404);
+    if (storageBackend === "postgres") {
+      const result = await query(
+        "SELECT bytes FROM mqw_private.media_blobs WHERE user_id=$1 AND asset_id=$2",
+        [userId, id],
+      );
+      const bytes = result.rows[0]?.bytes;
+      if (!Buffer.isBuffer(bytes) || bytes.length !== photo.size)
+        throw new ApiError("ملف الصورة غير متاح. يمكنك حذف السجل.", 404);
+      return { photo, bytes };
+    }
     let handle;
     try {
       handle = await open(
@@ -252,6 +281,7 @@ export async function removePhoto(userId: string, id: string) {
       await requireEntity(userId, "evoPhotos", id);
       if (storageBackend === "sqlite")
         await rm(photoPath(userId, id), { force: true });
+      // PostgreSQL: the owner-bound foreign key deletes the blob in the same transaction.
       await deleteEntity(userId, "evoPhotos", id);
       return { deleted: true };
     }),

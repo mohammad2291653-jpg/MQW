@@ -6,6 +6,7 @@ import { requireUser, verifyPassword } from "@/lib/server/auth";
 import {
   getState,
   db,
+  privatePhotosAvailable,
   query,
   storageBackend,
   transaction,
@@ -101,10 +102,31 @@ async function* postgresVoiceJson(
   userId: string,
   asset: VoiceAsset,
 ): AsyncGenerator<string> {
+  yield* postgresBlobJson(userId, asset, "voice", 20 * 1024 * 1024);
+}
+// Static, allowlisted SQL per blob table (no dynamic identifiers).
+const BLOB_SQL = {
+  voice: {
+    size: "SELECT octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+    chunk:
+      "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+  },
+  media: {
+    size: "SELECT octet_length(bytes) AS size FROM mqw_private.media_blobs WHERE user_id=$1 AND asset_id=$2",
+    chunk:
+      "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.media_blobs WHERE user_id=$1 AND asset_id=$2",
+  },
+} as const;
+async function* postgresBlobJson(
+  userId: string,
+  asset: { id: string; size: number; mimeType: string },
+  table: keyof typeof BLOB_SQL,
+  limit: number,
+): AsyncGenerator<string> {
   if (
     !Number.isSafeInteger(asset.size) ||
     asset.size < 1 ||
-    asset.size > 20 * 1024 * 1024
+    asset.size > limit
   ) {
     yield JSON.stringify({
       id: asset.id,
@@ -114,10 +136,7 @@ async function* postgresVoiceJson(
   }
   try {
     const result = await withOwner(userId, () =>
-      query(
-        "SELECT octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
-        [userId, asset.id],
-      ),
+      query(BLOB_SQL[table].size, [userId, asset.id]),
     );
     if (Number(result.rows[0]?.size) !== asset.size)
       throw new Error("unavailable audio");
@@ -143,10 +162,7 @@ async function* postgresVoiceJson(
     while (total < asset.size) {
       const wanted = Math.min(chunkSize, asset.size - total);
       const result = await withOwner(userId, () =>
-        query(
-          "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
-          [userId, asset.id, total + 1, wanted],
-        ),
+        query(BLOB_SQL[table].chunk, [userId, asset.id, total + 1, wanted]),
       );
       const row = result.rows[0];
       const chunk = row?.chunk;
@@ -191,6 +207,11 @@ async function* exportJson(
   }
   // MQW 90 private photos (local storage only; cloud photo storage is not enabled).
   yield '],"photoFiles":[';
+  if (storageBackend === "postgres" && (await privatePhotosAvailable()))
+    for (let index = 0; index < photos.length; index++) {
+      if (index) yield ",";
+      yield* postgresBlobJson(userId, photos[index], "media", PHOTO_FILE_LIMIT);
+    }
   if (storageBackend === "sqlite")
     for (let index = 0; index < photos.length; index++) {
       if (index) yield ",";

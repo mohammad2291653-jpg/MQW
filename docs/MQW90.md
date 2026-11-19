@@ -51,7 +51,7 @@ Validation lives in `src/lib/server/evolution.ts`. Deterministic date and recurr
 - **Metadata hygiene:** the browser re-encodes to JPEG (max 2048 px). The server sniffs the magic bytes (JPEG/PNG only) and independently strips JPEG APP1–APP13/APP15/COM segments and PNG text/time/EXIF chunks. Upload file names are neutral.
 - **Limits:** 8 MiB per photo, 300 MiB per account, one upload at a time, rate-limited, same-origin only.
 - Included in export (`photoFiles`, base64) and in the SQLite backup tool (`media/…`). Account deletion tombstones the folder with durable cleanup retry. Per-pillar deletion removes the files.
-- **Cloud/PostgreSQL mode: photos are disabled** (HTTP 501, with an explanation shown in the UI). A reviewed proposal exists at `supabase/proposals/mqw90_private_media.sql`. It is **not applied**.
+- **Cloud/PostgreSQL mode:** the code path is implemented (`mqw_private.media_blobs`, composite owner foreign key, owner RLS, chunked export). It is detected at runtime with `privatePhotosAvailable()`. Until the reviewed migration `supabase/proposals/mqw90_private_media.sql` is applied, cloud mode refuses uploads (HTTP 501) and the UI explains why. The migration is **not applied to any real database**.
 
 ## Clinical and privacy boundaries (product copy)
 
@@ -65,11 +65,12 @@ Validation lives in `src/lib/server/evolution.ts`. Deterministic date and recurr
 
 ## Production gate (requires owner approval)
 
-1. Enabling photos in cloud mode: apply the proposal migration only after a verified backup and tested restore, then extend `media.ts` and export for PostgreSQL.
+1. Enabling photos in cloud mode: apply the proposal migration only after a verified backup and tested restore. No code change is needed afterwards; the feature turns on within about 60 seconds.
 2. Deploying this branch: it changes no schema, but it does change the UI and add collections to the running service. Redeployment needs the owner's go-ahead.
 3. Any AI provider, paid generation (Higgsfield) or public registration change remains out of scope.
 
 ## Tests
 
 - `tests/evolution.test.ts` (unit/integration, SQLite): cycle maths and DST, recurrence and versioning, volume load, lifecycle and wellbeing opt-in, no-dose and clinician guards, idempotent intakes, PPL snapshots, owner isolation across collections and nested references, EXIF stripping and photo isolation, per-pillar deletion.
+- `tests/postgres-evolution.smoke.ts` (opt-in, loopback-only disposable PostgreSQL). Phase `before` (no media table): MQW 90 works and photos are refused. Phase `after` (proposal applied): upload, EXIF stripping, app- and RLS-level denial for another owner, a rejected forged insert, export of the exact bytes, and cascades on photo, pillar and account deletion.
 - `tests/evolution.e2e.spec.ts` (Chromium): the full user journey with reloads, private photo upload and compare, axe checks on 8 MQW 90 screens, no horizontal overflow at 390 px on 11 routes, per-pillar deletion, and cross-account and anonymous photo access denial.
