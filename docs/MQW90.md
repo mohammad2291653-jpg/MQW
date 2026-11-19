@@ -51,7 +51,7 @@ Validation lives in `src/lib/server/evolution.ts`. Deterministic date and recurr
 - **Metadata hygiene:** the browser re-encodes to JPEG (max 2048 px). The server sniffs the magic bytes (JPEG/PNG only) and independently strips JPEG APP1–APP13/APP15/COM segments and PNG text/time/EXIF chunks. Upload file names are neutral.
 - **Limits:** 8 MiB per photo, 300 MiB per account, one upload at a time, rate-limited, same-origin only.
 - Included in export (`photoFiles`, base64) and in the SQLite backup tool (`media/…`). Account deletion tombstones the folder with durable cleanup retry. Per-pillar deletion removes the files.
-- **Cloud/PostgreSQL mode:** the code path is implemented (`mqw_private.media_blobs`, composite owner foreign key, owner RLS, chunked export). It is detected at runtime with `privatePhotosAvailable()`. Until the reviewed migration `supabase/proposals/mqw90_private_media.sql` is applied, cloud mode refuses uploads (HTTP 501) and the UI explains why. The migration is **not applied to any real database**.
+- **Cloud/PostgreSQL mode:** the code path is implemented (`mqw_private.media_blobs`, composite owner foreign key, owner RLS, chunked export). It is detected at runtime with `privatePhotosAvailable()`. The owner approved the migration `supabase/migrations/20261119230934_mqw90_private_media.sql`, which was **applied to production on 2026-11-19**, so cloud photos are enabled. A database without the table still refuses uploads (HTTP 501).
 
 ## Clinical and privacy boundaries (product copy)
 
@@ -65,7 +65,11 @@ Validation lives in `src/lib/server/evolution.ts`. Deterministic date and recurr
 
 ## Production gate (requires owner approval)
 
-1. Enabling photos in cloud mode: apply the proposal migration only after a verified backup and tested restore. No code change is needed afterwards; the feature turns on within about 60 seconds.
+1. Cloud photos: **done on 2026-11-19.**
+   - Supabase listed no available backups, so a logical backup of `mqw_private` was taken first and restored into a disposable PostgreSQL, with identical per-table content fingerprints.
+   - The migration was applied by the migration admin in one transaction, together with its `schema_migrations` row.
+   - It was then verified on production as `mqw_app` inside a rolled-back transaction: owner insert and read, other-owner and no-context isolation, a forged insert rejected, cross-owner update and delete affecting 0 rows, and a delete cascade.
+   - Rollback: `drop table mqw_private.media_blobs`. The app falls back to the disabled state within about 60 seconds.
 2. Deploying this branch: it changes no schema, but it does change the UI and add collections to the running service. Redeployment needs the owner's go-ahead.
 3. Any AI provider, paid generation (Higgsfield) or public registration change remains out of scope.
 

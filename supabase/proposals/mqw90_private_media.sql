@@ -1,4 +1,5 @@
--- PROPOSAL ONLY — NOT APPLIED. Requires explicit owner approval before use.
+-- APPLIED to the production Supabase project on 2026-11-19 (owner-approved) as
+-- supabase/migrations/20261119230934_mqw90_private_media.sql. Kept for review history.
 --
 -- Purpose: enable MQW 90 private progress photos in PostgreSQL (cloud) mode.
 -- The application already contains the PostgreSQL code path (src/lib/server/media.ts,
