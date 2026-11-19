@@ -279,7 +279,7 @@ p {
 }
 .brand strong {
   font-family: var(--mqw-font-latin);
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -1.2px;
   background: linear-gradient(
     180deg,
@@ -530,4 +530,43 @@ p {
   color: var(--mqw-sapphire-bright);
   transform: none;
   filter: drop-shadow(0 2px 6px #1679b84d);
+}
+
+/* While a lazily loaded page arrives, keep the footer below the fold (no layout shift). */
+.page-content .page-skeleton {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Invisible (but rendered) glyphs: trigger early font downloads on the boot screen. */
+.font-warm {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.font-warm b {
+  font-size: 12px;
+}
+.fw-a6 {
+  font-family: var(--mqw-font-display);
+  font-weight: 600;
+}
+.fw-a7 {
+  font-family: var(--mqw-font-display);
+  font-weight: 700;
+}
+.fw-p5 {
+  font-family: var(--mqw-font-body);
+  font-weight: 500;
+}
+.fw-p6 {
+  font-family: var(--mqw-font-body);
+  font-weight: 600;
+}
+.fw-i4 {
+  font-family: var(--mqw-font-latin);
+  font-weight: 400;
 }

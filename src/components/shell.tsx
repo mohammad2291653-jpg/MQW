@@ -86,6 +86,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <div className="brand-mark">m</div>
         <p>لحظة لنفتح مساحتك…</p>
         <LoaderCircle className="spin" size={22} />
+        {/* Server-rendered glyphs make the browser fetch core faces before hydration. */}
+        <span className="font-warm" aria-hidden="true">
+          <b className="fw-a6">ا</b>
+          <b className="fw-a7">ا</b>
+          <b className="fw-p5">ا</b>
+          <b className="fw-p6">ا</b>
+          <b className="fw-i4">a</b>
+        </span>
       </div>
     );
   if (error && !state)

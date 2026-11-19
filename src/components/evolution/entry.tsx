@@ -5,6 +5,7 @@ import { useApp } from "../app-provider";
 import { openCycle, dayLabel } from "./shared";
 import { cycleDay, localDate, phaseFor } from "@/lib/evolution";
 import { number } from "@/lib/format";
+import "./entry.css";
 
 /** Prominent MQW 90 entry for Today and My Space — facts only, no fake percentages. */
 export function EvolutionEntry({

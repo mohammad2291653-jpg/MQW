@@ -25,7 +25,11 @@
 - 85–90% white, silver and ink by visual weight. Sapphire is reserved for actions, the active navigation item, focus and a few highlights.
 - Gloss is selective: primary buttons and the active navigation item get a specular top highlight and an inner edge. Hero frames get a soft top sheen. Body cards stay solid white with a chrome edge, with no glass blur on content.
 - Body text is solid near-black. Gradient text is limited to the MQW wordmark and short hero accents.
-- Type: **Alexandria** (600/700) for headings, **IBM Plex Sans Arabic** for body, **Inter** for Latin and numbers. All are OFL and served locally through Fontsource, with no Google request. Arabic is never letter-spaced.
+- Type: **Alexandria** (Arabic subset, 600/700) for headings, **IBM Plex Sans Arabic** (Arabic subset, 400/500/600) for body, and **Inter** (Latin subset, 400/600) as the only Latin and number face. All are OFL and served locally through Fontsource, with no Google request. Arabic is never letter-spaced.
+- Performance:
+  - Only the Arabic subsets of the Arabic faces load, so no Latin duplicates.
+  - Core faces are warmed from server-rendered glyphs on the boot screen, which keeps CLS at 0.
+  - The five primary destinations ship in the main bundle. MQW 90, the lesson player, reviews, study, settings and onboarding are lazy chunks, prefetched when idle after first content.
 - Motion is 140–200 ms with a soft ease-out. `prefers-reduced-motion` and the in-app reduced-motion setting remove transforms and transitions.
 - Touch targets are about 44 px. Every interactive element keeps a 3 px sapphire focus ring.
 - Layouts vary by job: the dark Daily Compass, an asymmetric pillar mosaic, PPL cards with distinct top rails, and timelines. They are deliberately not one repeated card.

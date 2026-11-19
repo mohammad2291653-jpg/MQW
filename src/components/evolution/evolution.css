@@ -9,15 +9,6 @@
 .evo-body {
   min-width: 0;
 }
-.evo-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--mqw-sapphire-deep);
-  margin-bottom: 2px;
-}
 
 /* ---------- Hero + phases ---------- */
 .evo-hero {
@@ -1442,63 +1433,6 @@
   flex: 1 1 260px;
 }
 
-/* ---------- Entry block on Today / My Space ---------- */
-.evo-entry {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 20px;
-  align-items: center;
-  padding: 22px 26px;
-  margin: 26px 0 6px;
-  border-radius: 22px;
-  border: 1px solid #c8def0;
-  background:
-    radial-gradient(60% 160% at 0% 50%, #e0f3ff 0%, transparent 60%),
-    linear-gradient(170deg, #ffffff 0%, #f3f9ff 100%);
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 20px 40px -32px #0b3a6a80;
-}
-.evo-entry-today {
-  margin: 34px 0 26px;
-}
-.evo-entry-space {
-  margin: 0 0 18px;
-}
-.evo-entry-mark {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(160deg, #1a2433 0%, #090d13 100%);
-  border: 1px solid #2a3647;
-  box-shadow:
-    inset 0 1px 0 #ffffff26,
-    0 10px 24px -14px #000000aa;
-}
-.evo-entry-mark span {
-  font-family: var(--mqw-font-latin);
-  font-weight: 800;
-  font-size: 24px;
-  letter-spacing: -1px;
-  background: linear-gradient(180deg, #ffffff, #bceeff 60%, #5edbff);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.evo-entry-copy h2 {
-  font-size: 20px;
-  line-height: 1.5;
-}
-.evo-entry-copy p {
-  color: var(--mqw-ink-secondary);
-  font-size: 14px;
-}
-.evo-entry-copy p strong {
-  color: var(--mqw-ink);
-}
-
 /* ---------- Responsive ---------- */
 @media (max-width: 1180px) {
   .evo-hero {
@@ -1564,19 +1498,6 @@
   .evo-set-form .btn {
     grid-column: 1 / -1;
     width: 100%;
-  }
-  .evo-entry {
-    grid-template-columns: auto minmax(0, 1fr);
-    padding: 18px;
-  }
-  .evo-entry-cta {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-  .evo-entry-mark {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
   }
   .evo-timeline li {
     grid-template-columns: 84px minmax(0, 1fr) auto;

@@ -18,8 +18,9 @@
   --mqw-cyan-reflection: #5edbff;
   --mqw-danger: #b42318;
   --mqw-success: #0f6b4f;
-  --mqw-font-display: "Alexandria", "IBM Plex Sans Arabic", system-ui, sans-serif;
-  --mqw-font-body: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --mqw-font-display:
+    "Alexandria", "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --mqw-font-body: "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif;
   --mqw-font-latin: "Inter", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --mqw-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --mqw-fast: 140ms;
@@ -49,7 +50,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+  font-family: "IBM Plex Sans Arabic", "Inter", system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.75;
   -webkit-font-smoothing: antialiased;
