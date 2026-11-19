@@ -11,6 +11,10 @@ export default defineConfig({
     baseURL: process.env.MQW_TEST_URL || "http://localhost:3000",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    // Optional: reuse a preinstalled Chromium when the bundled build is absent.
+    ...(process.env.MQW_CHROMIUM_PATH
+      ? { launchOptions: { executablePath: process.env.MQW_CHROMIUM_PATH } }
+      : {}),
   },
   projects: [
     {

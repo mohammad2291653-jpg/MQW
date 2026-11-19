@@ -6,6 +6,7 @@ import { requireUser, verifyPassword } from "@/lib/server/auth";
 import {
   getState,
   db,
+  privatePhotosAvailable,
   query,
   storageBackend,
   transaction,
@@ -13,7 +14,8 @@ import {
 } from "@/lib/server/db";
 import { fail, rateLimit, checkOrigin, readBody } from "@/lib/server/http";
 import { voicePath } from "@/lib/server/voice";
-import type { VoiceAsset } from "@/lib/types";
+import { photoPath, PHOTO_FILE_LIMIT } from "@/lib/server/media";
+import type { EvoPhoto, VoiceAsset } from "@/lib/types";
 export const runtime = "nodejs";
 
 /** The generator is pulled by the consumer; it never buffers the audio archive. */
@@ -21,19 +23,23 @@ async function* localVoiceJson(
   userId: string,
   asset: VoiceAsset,
 ): AsyncGenerator<string> {
+  yield* localFileJson(voicePath(userId, asset.id), asset, 20 * 1024 * 1024);
+}
+async function* localFileJson(
+  path: string,
+  asset: { id: string; size: number; mimeType: string },
+  limit: number,
+): AsyncGenerator<string> {
   let handle: FileHandle | undefined;
   let before;
   try {
     if (
       !Number.isSafeInteger(asset.size) ||
       asset.size < 1 ||
-      asset.size > 20 * 1024 * 1024
+      asset.size > limit
     )
       throw new Error("invalid size");
-    handle = await open(
-      voicePath(userId, asset.id),
-      constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
-    );
+    handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
     before = await handle.stat();
     if (!before.isFile() || before.size !== asset.size)
       throw new Error("unavailable file");
@@ -96,10 +102,31 @@ async function* postgresVoiceJson(
   userId: string,
   asset: VoiceAsset,
 ): AsyncGenerator<string> {
+  yield* postgresBlobJson(userId, asset, "voice", 20 * 1024 * 1024);
+}
+// Static, allowlisted SQL per blob table (no dynamic identifiers).
+const BLOB_SQL = {
+  voice: {
+    size: "SELECT octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+    chunk:
+      "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
+  },
+  media: {
+    size: "SELECT octet_length(bytes) AS size FROM mqw_private.media_blobs WHERE user_id=$1 AND asset_id=$2",
+    chunk:
+      "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.media_blobs WHERE user_id=$1 AND asset_id=$2",
+  },
+} as const;
+async function* postgresBlobJson(
+  userId: string,
+  asset: { id: string; size: number; mimeType: string },
+  table: keyof typeof BLOB_SQL,
+  limit: number,
+): AsyncGenerator<string> {
   if (
     !Number.isSafeInteger(asset.size) ||
     asset.size < 1 ||
-    asset.size > 20 * 1024 * 1024
+    asset.size > limit
   ) {
     yield JSON.stringify({
       id: asset.id,
@@ -109,10 +136,7 @@ async function* postgresVoiceJson(
   }
   try {
     const result = await withOwner(userId, () =>
-      query(
-        "SELECT octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
-        [userId, asset.id],
-      ),
+      query(BLOB_SQL[table].size, [userId, asset.id]),
     );
     if (Number(result.rows[0]?.size) !== asset.size)
       throw new Error("unavailable audio");
@@ -138,10 +162,7 @@ async function* postgresVoiceJson(
     while (total < asset.size) {
       const wanted = Math.min(chunkSize, asset.size - total);
       const result = await withOwner(userId, () =>
-        query(
-          "SELECT substring(bytes FROM $3 FOR $4) AS chunk, octet_length(bytes) AS size FROM mqw_private.voice_blobs WHERE user_id=$1 AND asset_id=$2",
-          [userId, asset.id, total + 1, wanted],
-        ),
+        query(BLOB_SQL[table].chunk, [userId, asset.id, total + 1, wanted]),
       );
       const row = result.rows[0];
       const chunk = row?.chunk;
@@ -177,12 +198,29 @@ async function* exportJson(
   prefix: string,
   userId: string,
   assets: VoiceAsset[],
+  photos: EvoPhoto[],
 ): AsyncGenerator<string> {
   yield prefix;
   for (let index = 0; index < assets.length; index++) {
     if (index) yield ",";
     yield* voiceJson(userId, assets[index]);
   }
+  // MQW 90 private photos (local storage only; cloud photo storage is not enabled).
+  yield '],"photoFiles":[';
+  if (storageBackend === "postgres" && (await privatePhotosAvailable()))
+    for (let index = 0; index < photos.length; index++) {
+      if (index) yield ",";
+      yield* postgresBlobJson(userId, photos[index], "media", PHOTO_FILE_LIMIT);
+    }
+  if (storageBackend === "sqlite")
+    for (let index = 0; index < photos.length; index++) {
+      if (index) yield ",";
+      yield* localFileJson(
+        photoPath(userId, photos[index].id),
+        photos[index],
+        PHOTO_FILE_LIMIT,
+      );
+    }
   yield "]}";
 }
 export async function GET() {
@@ -222,7 +260,9 @@ export async function POST(request: Request) {
       }),
     );
     const metadata = JSON.stringify({
-      schemaVersion: "mqw-export-1",
+      schemaVersion: "mqw-export-2",
+      sensitivityNotice:
+        "يحتوي هذا الملف على بيانات شخصية حساسة (صور، يوميات، مكمّلات، تسجيلات). احفظه في مكان خاص.",
       exportedAt: new Date().toISOString(),
       user,
       state,
@@ -232,6 +272,7 @@ export async function POST(request: Request) {
       metadata.slice(0, -1) + ',"voiceFiles":[',
       user.id,
       state.voiceAssets,
+      state.evoPhotos,
     );
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>(

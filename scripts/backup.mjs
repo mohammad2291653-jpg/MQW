@@ -60,7 +60,7 @@ function existingDirectory(path) {
 function safeFile(root, name) {
   if (
     name !== "mqw.sqlite" &&
-    !/^voice\/[A-Za-z0-9_-]{1,100}\/[A-Za-z0-9_-]{1,100}$/.test(name)
+    !/^(voice|media)\/[A-Za-z0-9_-]{1,100}\/[A-Za-z0-9_-]{1,100}$/.test(name)
   )
     stop("The backup contains an unsafe file path.");
   const full = join(root, ...name.split("/"));
@@ -172,7 +172,7 @@ function inspectDatabase(path, writable = false) {
     }
     const rows = db
       .prepare(
-        "SELECT id,user_id,data FROM records WHERE collection='voiceAssets' ORDER BY user_id,id",
+        "SELECT id,user_id,collection,data FROM records WHERE collection IN ('voiceAssets','evoPhotos') ORDER BY collection DESC,user_id,id",
       )
       .all();
     const files = rows.map((row) => {
@@ -184,13 +184,18 @@ function inspectDatabase(path, writable = false) {
       } catch {
         stop("A voice snapshot has invalid metadata.");
       }
+      // MQW 90 private photos are file-backed like voice recordings (8 MiB limit).
+      const photo = row.collection === "evoPhotos";
       if (
         !Number.isSafeInteger(data.size) ||
         data.size <= 0 ||
-        data.size > 20 * 1024 * 1024
+        data.size > (photo ? 8 : 20) * 1024 * 1024
       )
         stop("A voice snapshot has an invalid size.");
-      return { path: `voice/${row.user_id}/${row.id}`, bytes: data.size };
+      return {
+        path: `${photo ? "media" : "voice"}/${row.user_id}/${row.id}`,
+        bytes: data.size,
+      };
     });
     if (files.length + 1 > MAX_FILES) stop("The snapshot has too many files.");
     return { db, files };

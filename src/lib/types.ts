@@ -1,3 +1,10 @@
+import type {
+  CycleState,
+  PillarKey,
+  Schedule,
+  ScheduleVersion,
+  WorkoutSet,
+} from "./evolution";
 export type Rating = "again" | "hard" | "good";
 export type Entity = {
   id: string;
@@ -135,8 +142,204 @@ export type InsightFeedback = Entity & {
   ruleId: string;
   action: "dismiss" | "inaccurate";
 };
-export type AppState = {
+// ---------- MQW 90 — My Evolution ----------
+export type EvoGoal = { id: string; title: string; target?: string };
+export type EvoCycle = Entity & {
+  startDate: string;
+  timezone: string;
+  state: CycleState;
+  goals: EvoGoal[];
+  pillars: Record<PillarKey, boolean>;
+  balanceDomains: string[];
+  pausedAt?: string | null;
+  completedAt?: string | null;
+  archivedAt?: string | null;
+  note?: string;
+};
+export type EvoDailyStatus =
+  "planned" | "done" | "rest" | "skipped" | "postponed" | "not_applicable";
+export type EvoDaily = Entity & {
+  cycleId: string;
+  date: string;
+  focus: string;
+  status: EvoDailyStatus;
+  note?: string;
+};
+export type EvoArea = "face" | "scalp" | "beard";
+export type EvoProduct = Entity & {
+  pillar: "skin" | "hair";
+  area: EvoArea;
+  name: string;
+  brand?: string;
+  ingredients?: string;
+  size?: string;
+  source?: string;
+  url?: string;
+  labelInstructions?: string;
+  strengthAsLabelled?: string;
+  clinicianNote?: string;
+  patchTestNote?: string;
+  status: "active" | "paused" | "discontinued";
+};
+export type EvoRoutineEvent = Entity & {
+  cycleId?: string;
+  pillar: "skin" | "hair";
+  area: EvoArea;
+  kind: "application" | "microneedling";
+  productId?: string | null;
+  date: string;
+  time?: string;
+  status: "done" | "skipped" | "paused" | "discontinued";
+  clinicianEstablished?: boolean;
+  irritation: boolean;
+  notes?: string;
+};
+export type EvoObservation = Entity & {
+  cycleId?: string;
+  pillar: "skin" | "hair";
+  area: EvoArea;
+  date: string;
+  productId?: string | null;
+  narrative: string;
+  rating?: number | null;
+  irritation: boolean;
+};
+export type EvoPhoto = Entity & {
+  pillar: "skin" | "hair" | "fitness";
+  area: EvoArea | "body";
+  date: string;
+  caption?: string;
+  mimeType: string;
+  size: number;
+  width?: number;
+  height?: number;
+};
+export type EvoAgencyReview = Entity & {
+  productName: string;
+  supplier?: string;
+  manufacturer?: string;
+  documentsRequested?: string;
+  claimsToVerify?: string;
+  territory?: string;
+  priceNotes?: string;
+  checklist: Record<string, boolean>;
+  decision: "exploring" | "on_hold" | "declined" | "pursuing";
+  notes?: string;
+};
+export type EvoSupplement = Entity & {
+  kind: "supplement" | "medication";
+  name: string;
+  brand?: string;
+  purpose?: string;
+  ingredient?: string;
+  strength?: string;
+  doseText?: string;
+  sourceNote?: string;
+  contraindicationNote?: string;
+  professionalAdvice?: string;
+  status: "active" | "paused" | "discontinued";
+  startDate: string;
+  endDate?: string | null;
+  schedule: Schedule;
+  scheduleHistory: ScheduleVersion[];
+};
+export type EvoIntake = Entity & {
+  supplementId: string;
+  date: string;
+  time: string;
+  scheduleVersion: number;
+  status: "taken" | "skipped" | "postponed" | "not_applicable";
+  actualAt?: string | null;
+  note?: string;
+};
+export type EvoExercise = Entity & {
+  name: string;
+  muscleGroup?: string;
+  equipment?: string;
+  notes?: string;
+  archived: boolean;
+};
+export type EvoTemplate = Entity & {
+  name: string;
+  type: "push" | "pull" | "legs" | "custom";
+  exerciseIds: string[];
+  order: number;
+  notes?: string;
+};
+export type EvoWorkout = Entity & {
+  cycleId?: string;
+  templateId?: string | null;
+  templateName: string;
+  type: "push" | "pull" | "legs" | "custom" | "free";
+  date: string;
+  startedAt: string;
+  endedAt?: string | null;
+  status: "in_progress" | "completed" | "interrupted";
+  sets: WorkoutSet[];
+  recovery?: number | null;
+  painNote?: string;
+  notes?: string;
+};
+export type EvoRestDay = Entity & {
+  cycleId?: string;
+  date: string;
+  note?: string;
+};
+export type EvoMetric = Entity & {
+  type: string;
+  value: number;
+  unit: string;
+  date: string;
+};
+export type EvoWellbeing = Entity & {
+  date: string;
+  mood?: number | null;
+  stress?: number | null;
+  energy?: number | null;
+  note?: string;
+};
+export type EvoJournal = Entity & {
+  date: string;
+  prompt: "free" | "emotions" | "boundaries" | "relationships" | "gratitude";
+  body: string;
+};
+export type EvoWeekly = Entity & {
+  cycleId: string;
+  weekStart: string;
+  domains: string[];
+  win?: string;
+  constraint?: string;
+  nextAction?: string;
+  balanceRating?: number | null;
+};
+export type EvoMilestone = Entity & {
+  cycleId: string;
+  day: 1 | 30 | 60 | 90;
+  reflection: string;
+};
+export type EvolutionCollections = {
+  evoCycles: EvoCycle[];
+  evoDaily: EvoDaily[];
+  evoProducts: EvoProduct[];
+  evoRoutineEvents: EvoRoutineEvent[];
+  evoObservations: EvoObservation[];
+  evoPhotos: EvoPhoto[];
+  evoAgencyReviews: EvoAgencyReview[];
+  evoSupplements: EvoSupplement[];
+  evoIntakes: EvoIntake[];
+  evoExercises: EvoExercise[];
+  evoTemplates: EvoTemplate[];
+  evoWorkouts: EvoWorkout[];
+  evoRestDays: EvoRestDay[];
+  evoMetrics: EvoMetric[];
+  evoWellbeing: EvoWellbeing[];
+  evoJournal: EvoJournal[];
+  evoWeekly: EvoWeekly[];
+  evoMilestones: EvoMilestone[];
+};
+export type AppState = EvolutionCollections & {
   preferences: Preferences;
+  capabilities?: { privatePhotos: boolean };
   lessonAttempts: LessonAttempt[];
   answers: Answer[];
   reviews: ReviewCard[];
@@ -154,6 +357,9 @@ export type AppState = {
   weeklyReviews: WeeklyReview[];
   insightFeedback: InsightFeedback[];
 };
-export type Collection = Exclude<keyof AppState, "preferences">;
+export type Collection = Exclude<
+  keyof AppState,
+  "preferences" | "capabilities"
+>;
 export type ApiResult<T> =
   { data: T; error?: never } | { error: string; data?: never };

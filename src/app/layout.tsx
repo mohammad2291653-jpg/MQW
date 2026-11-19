@@ -1,11 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import "@fontsource/ibm-plex-sans-arabic/400.css";
-import "@fontsource/ibm-plex-sans-arabic/500.css";
-import "@fontsource/ibm-plex-sans-arabic/600.css";
-import "@fontsource/ibm-plex-sans-arabic/700.css";
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/600.css";
+// Arabic glyphs come from IBM Plex Sans Arabic (body) and Alexandria (headings);
+// Latin letters and numbers come from Inter only, so no duplicate Latin subsets load.
+import "@fontsource/ibm-plex-sans-arabic/arabic-400.css";
+import "@fontsource/ibm-plex-sans-arabic/arabic-500.css";
+import "@fontsource/ibm-plex-sans-arabic/arabic-600.css";
+import "@fontsource/alexandria/arabic-600.css";
+import "@fontsource/alexandria/arabic-700.css";
+import "@fontsource/inter/latin-400.css";
+import "@fontsource/inter/latin-600.css";
 import "./globals.css";
+import "./theme-v3.css";
 import { AppProvider } from "@/components/app-provider";
 import { ToastProvider } from "@/components/ui";
 import { Shell } from "@/components/shell";
@@ -23,7 +27,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#F8F9F7",
+  themeColor: "#FFFFFF",
 };
 export default function RootLayout({
   children,

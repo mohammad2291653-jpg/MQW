@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/db";
 import { checkOrigin, fail, json, readBody } from "@/lib/server/http";
 import { voiceDir } from "@/lib/server/voice";
+import { mediaDir } from "@/lib/server/media";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
@@ -45,34 +46,54 @@ export async function DELETE(request: Request) {
         "Set-Cookie": sessionCookie("", 0),
       });
     }
-    const folder = voiceDir(user.id);
-    const tombstone = `${folder}.deleting`;
-    let moved = false;
+    // Voice recordings and MQW 90 private photos are both tombstoned in the same transaction.
+    const folders = [voiceDir(user.id), mediaDir(user.id)].map((folder) => ({
+      folder,
+      tombstone: `${folder}.deleting`,
+      moved: false,
+    }));
     try {
       await withOwner(user.id, async () => {
         await verifyPassword(user.id, body.password);
         await transaction(async () => {
-          if (existsSync(folder)) {
-            renameSync(folder, tombstone);
-            moved = true;
+          for (const entry of folders) {
+            if (!existsSync(/*turbopackIgnore: true*/ entry.folder)) continue;
+            renameSync(
+              /*turbopackIgnore: true*/ entry.folder,
+              /*turbopackIgnore: true*/ entry.tombstone,
+            );
+            entry.moved = true;
             await db
               .prepare(
                 "INSERT OR REPLACE INTO file_cleanup(path,created_at) VALUES(?,?)",
               )
-              .run(tombstone, new Date().toISOString());
+              .run(entry.tombstone, new Date().toISOString());
           }
           await db.prepare("DELETE FROM users WHERE id=?").run(user.id);
         });
       });
     } catch (error) {
-      if (moved && existsSync(tombstone)) renameSync(tombstone, folder);
+      for (const entry of folders)
+        if (
+          entry.moved &&
+          existsSync(/*turbopackIgnore: true*/ entry.tombstone)
+        )
+          renameSync(
+            /*turbopackIgnore: true*/ entry.tombstone,
+            /*turbopackIgnore: true*/ entry.folder,
+          );
       throw error;
     }
     // withOwner commits its actual transaction before destructive filesystem cleanup.
     await drainFileCleanup();
-    const filesDeletionPending = !!(await db
-      .prepare("SELECT path FROM file_cleanup WHERE path=?")
-      .get(tombstone));
+    let filesDeletionPending = false;
+    for (const entry of folders)
+      if (
+        await db
+          .prepare("SELECT path FROM file_cleanup WHERE path=?")
+          .get(entry.tombstone)
+      )
+        filesDeletionPending = true;
     return json(
       { deleted: true, filesDeletionPending },
       filesDeletionPending ? 202 : 200,

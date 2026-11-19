@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import type { AppState, Entity, Preferences } from "../types";
+import { EVO_STATE_COLLECTIONS } from "./evolution-collections";
 
 type Row = Record<string, any>;
 type Context = { client?: PoolClient; owner?: string; active: boolean };
@@ -424,6 +425,30 @@ export async function savePreferences(
     .run(JSON.stringify(values), userId);
   return values;
 }
+let mediaTableSeen = false;
+let mediaTableCheckedAt = 0;
+/**
+ * Private photo bytes need a private store: local files (SQLite) or the
+ * owner-approved `mqw_private.media_blobs` table (PostgreSQL). Until that
+ * migration exists, cloud photo features stay disabled automatically.
+ */
+export async function privatePhotosAvailable(): Promise<boolean> {
+  if (storageBackend === "sqlite") return true;
+  if (mediaTableSeen) return true;
+  if (Date.now() - mediaTableCheckedAt < 60000) return false;
+  mediaTableCheckedAt = Date.now();
+  try {
+    const row = (
+      await query(
+        "SELECT to_regclass('mqw_private.media_blobs') IS NOT NULL AS ok",
+      )
+    ).rows[0];
+    mediaTableSeen = row?.ok === true;
+  } catch {
+    mediaTableSeen = false;
+  }
+  return mediaTableSeen;
+}
 export async function getState(userId: string): Promise<AppState> {
   return withOwner(userId, async () => {
     const collections = [
@@ -443,9 +468,12 @@ export async function getState(userId: string): Promise<AppState> {
       "voiceAssets",
       "weeklyReviews",
       "insightFeedback",
+      ...EVO_STATE_COLLECTIONS,
     ];
     const result: Record<string, unknown> = {
       preferences: await preferences(userId),
+      // Private photo bytes are only enabled where a private store exists (local files).
+      capabilities: { privatePhotos: await privatePhotosAvailable() },
     };
     for (const collection of collections) result[collection] = [];
     const rows = await db
@@ -491,7 +519,11 @@ export async function drainFileCleanup(): Promise<number> {
   return transaction(async () => {
     const rows = await db.prepare("SELECT path FROM file_cleanup").all();
     for (const { path } of rows) {
-      if (!path.startsWith(join(DATA_DIR, "voice") + "/")) continue;
+      if (
+        !path.startsWith(join(DATA_DIR, "voice") + "/") &&
+        !path.startsWith(join(DATA_DIR, "media") + "/")
+      )
+        continue;
       try {
         rmSync(path, { recursive: true, force: true });
         await db.prepare("DELETE FROM file_cleanup WHERE path=?").run(path);

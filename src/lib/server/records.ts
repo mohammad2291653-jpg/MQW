@@ -10,6 +10,14 @@ import {
   savePreferences,
 } from "./db";
 import { optionalText, text } from "./http";
+import {
+  EVO_COLLECTIONS,
+  beforeEvolutionCreate,
+  beforeEvolutionDelete,
+  beforeEvolutionPatch,
+  findDuplicate,
+  validateEvolution,
+} from "./evolution";
 const ALLOWED = [
   "notes",
   "tasks",
@@ -20,6 +28,7 @@ const ALLOWED = [
   "studySessions",
   "weeklyReviews",
   "insightFeedback",
+  ...EVO_COLLECTIONS,
 ];
 export function checkCollection(collection: string) {
   if (!ALLOWED.includes(collection))
@@ -104,8 +113,11 @@ export async function validateRecord(
   userId: string,
   collection: string,
   v: Record<string, unknown>,
+  old?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   checkCollection(collection);
+  if (collection.startsWith("evo"))
+    return validateEvolution(userId, collection, v, old);
   switch (collection) {
     case "notes":
       return {
@@ -197,6 +209,11 @@ export async function createRecord(
   body: Record<string, unknown>,
 ) {
   const values = await validateRecord(userId, collection, body);
+  if (collection.startsWith("evo")) {
+    await beforeEvolutionCreate(userId, collection, values);
+    const existing = await findDuplicate(userId, collection, values);
+    if (existing) return updateEntity(userId, collection, existing.id, values);
+  }
   if (
     collection === "tasks" &&
     values.priority &&
@@ -214,7 +231,14 @@ export async function patchRecord(
 ) {
   checkCollection(collection);
   const old = await requireEntity(userId, collection, id);
-  const values = await validateRecord(userId, collection, { ...old, ...body });
+  const values = await validateRecord(
+    userId,
+    collection,
+    { ...old, ...body },
+    old,
+  );
+  if (collection.startsWith("evo"))
+    await beforeEvolutionPatch(userId, collection, id, values);
   if (
     collection === "tasks" &&
     values.priority &&
@@ -232,6 +256,8 @@ export async function removeRecord(
   id: string,
 ) {
   checkCollection(collection);
+  if (collection.startsWith("evo"))
+    await beforeEvolutionDelete(userId, collection, id);
   if (collection === "projects")
     for (const task of await listEntities(userId, "tasks"))
       if (task.projectId === id)

@@ -40,6 +40,7 @@ import type {
   VoiceAsset,
 } from "@/lib/types";
 import "./space.css";
+import { EvolutionEntry } from "./evolution/entry";
 
 type Section = "notes" | "tasks" | "habits" | "goals" | "timer" | "journal";
 type ModalKind = "note" | "task" | "project" | "habit" | "goal" | null;
@@ -434,6 +435,7 @@ export default function SpacePage({ section = [] }: { section?: string[] }) {
           <Leaf size={45} strokeWidth={1} />
         </div>
       </header>
+      <EvolutionEntry variant="space" />
       <nav className="space-tabs" aria-label="أقسام مساحتي">
         {tabs.map((tab) => (
           <Link
