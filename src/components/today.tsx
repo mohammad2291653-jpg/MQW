@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   Clock3,
   Flag,
+  Gem,
   Leaf,
   Lightbulb,
   Mic,
@@ -134,8 +135,8 @@ export default function TodayPage() {
           <h1>
             {greeting}
             {user?.name ? `، ${user.name.split(" ")[0]}` : ""}
-            <span className="greeting-leaf">
-              <Leaf size={29} strokeWidth={1.4} />
+            <span className="greeting-leaf greeting-gem" aria-hidden="true">
+              <Gem size={26} strokeWidth={1.5} />
             </span>
           </h1>
           <p className="page-description">
@@ -221,7 +222,6 @@ export default function TodayPage() {
           </span>
         </div>
       </section>
-      <EvolutionEntry variant="today" />
       <section className="learning-path-section">
         <div className="section-heading">
           <div>
@@ -263,6 +263,8 @@ export default function TodayPage() {
           })}
         </div>
       </section>
+      {/* MQW 90 complements learning; it never competes with the main learning action. */}
+      <EvolutionEntry variant="today" />
       <div className="today-columns">
         <section className="priorities-section">
           <div className="section-heading">

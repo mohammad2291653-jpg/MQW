@@ -54,7 +54,7 @@ export function EvolutionEntry({
       </div>
       <Link
         href={cycle ? "/evolution" : "/evolution/onboarding"}
-        className="btn btn-primary evo-entry-cta"
+        className={`btn ${variant === "space" ? "btn-primary" : "btn-secondary"} evo-entry-cta`}
       >
         {cycle ? (daily?.focus ? "افتح رحلتي" : "خطوتي اليوم") : "ابدأ رحلتك"}{" "}
         <ArrowLeft size={17} />

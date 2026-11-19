@@ -524,3 +524,10 @@ p {
     min-width: 44px;
   }
 }
+
+/* Diamond brand detail beside the greeting (decorative). */
+.greeting-gem {
+  color: var(--mqw-sapphire-bright);
+  transform: none;
+  filter: drop-shadow(0 2px 6px #1679b84d);
+}
