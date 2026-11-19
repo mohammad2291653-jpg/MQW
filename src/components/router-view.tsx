@@ -11,6 +11,7 @@ import SpacePage from "./space";
 import ProgressPage from "./progress";
 import SettingsPage from "./settings";
 import Onboarding from "./onboarding";
+import EvolutionPage from "./evolution/evolution";
 export default function RouterView({ path }: { path: string[] }) {
   const [root, ...rest] = path;
   if (
@@ -40,6 +41,8 @@ export default function RouterView({ path }: { path: string[] }) {
       return <ProgressPage section={rest} />;
     case "settings":
       return <SettingsPage section={rest} />;
+    case "evolution":
+      return <EvolutionPage path={rest} />;
     case "onboarding":
       return <Onboarding />;
     default:

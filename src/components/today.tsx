@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useApp } from "./app-provider";
 import { LearningArt, PalaceArt } from "./art";
+import { EvolutionEntry } from "./evolution/entry";
 import { Button, Modal, useToast } from "./ui";
 import { dateLabel, number } from "@/lib/format";
 const program = [
@@ -220,6 +221,7 @@ export default function TodayPage() {
           </span>
         </div>
       </section>
+      <EvolutionEntry variant="today" />
       <section className="learning-path-section">
         <div className="section-heading">
           <div>

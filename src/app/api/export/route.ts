@@ -13,7 +13,8 @@ import {
 } from "@/lib/server/db";
 import { fail, rateLimit, checkOrigin, readBody } from "@/lib/server/http";
 import { voicePath } from "@/lib/server/voice";
-import type { VoiceAsset } from "@/lib/types";
+import { photoPath, PHOTO_FILE_LIMIT } from "@/lib/server/media";
+import type { EvoPhoto, VoiceAsset } from "@/lib/types";
 export const runtime = "nodejs";
 
 /** The generator is pulled by the consumer; it never buffers the audio archive. */
@@ -21,19 +22,23 @@ async function* localVoiceJson(
   userId: string,
   asset: VoiceAsset,
 ): AsyncGenerator<string> {
+  yield* localFileJson(voicePath(userId, asset.id), asset, 20 * 1024 * 1024);
+}
+async function* localFileJson(
+  path: string,
+  asset: { id: string; size: number; mimeType: string },
+  limit: number,
+): AsyncGenerator<string> {
   let handle: FileHandle | undefined;
   let before;
   try {
     if (
       !Number.isSafeInteger(asset.size) ||
       asset.size < 1 ||
-      asset.size > 20 * 1024 * 1024
+      asset.size > limit
     )
       throw new Error("invalid size");
-    handle = await open(
-      voicePath(userId, asset.id),
-      constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
-    );
+    handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
     before = await handle.stat();
     if (!before.isFile() || before.size !== asset.size)
       throw new Error("unavailable file");
@@ -177,12 +182,24 @@ async function* exportJson(
   prefix: string,
   userId: string,
   assets: VoiceAsset[],
+  photos: EvoPhoto[],
 ): AsyncGenerator<string> {
   yield prefix;
   for (let index = 0; index < assets.length; index++) {
     if (index) yield ",";
     yield* voiceJson(userId, assets[index]);
   }
+  // MQW 90 private photos (local storage only; cloud photo storage is not enabled).
+  yield '],"photoFiles":[';
+  if (storageBackend === "sqlite")
+    for (let index = 0; index < photos.length; index++) {
+      if (index) yield ",";
+      yield* localFileJson(
+        photoPath(userId, photos[index].id),
+        photos[index],
+        PHOTO_FILE_LIMIT,
+      );
+    }
   yield "]}";
 }
 export async function GET() {
@@ -222,7 +239,9 @@ export async function POST(request: Request) {
       }),
     );
     const metadata = JSON.stringify({
-      schemaVersion: "mqw-export-1",
+      schemaVersion: "mqw-export-2",
+      sensitivityNotice:
+        "يحتوي هذا الملف على بيانات شخصية حساسة (صور، يوميات، مكمّلات، تسجيلات). احفظه في مكان خاص.",
       exportedAt: new Date().toISOString(),
       user,
       state,
@@ -232,6 +251,7 @@ export async function POST(request: Request) {
       metadata.slice(0, -1) + ',"voiceFiles":[',
       user.id,
       state.voiceAssets,
+      state.evoPhotos,
     );
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>(

@@ -39,7 +39,9 @@ const nav = [
 function active(href: string, path: string) {
   return (
     path.startsWith(href) ||
-    (href === "/learn" && /^\/(reviews|study)/.test(path))
+    (href === "/learn" && /^\/(reviews|study)/.test(path)) ||
+    // MQW 90 is a section of My Space, not a sixth primary destination.
+    (href === "/space" && path.startsWith("/evolution"))
   );
 }
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -196,8 +198,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <span className="desktop-only">مساحتك</span>
             <ChevronLeft size={13} className="desktop-only" />
             <span>
-              {current?.name ||
-                (path.startsWith("/settings") ? "الإعدادات" : "مرحبًا بك")}
+              {path.startsWith("/evolution")
+                ? "رحلتي ٩٠"
+                : current?.name ||
+                  (path.startsWith("/settings") ? "الإعدادات" : "مرحبًا بك")}
             </span>
           </div>
           <div className="topbar-tools">

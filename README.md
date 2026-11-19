@@ -1,6 +1,6 @@
 # MQW
 
-Current hosting: **Render Free + Supabase Free private PostgreSQL**, with no persistent Render disk. Application commit `35aac55` reached Live and passed hosted HTTPS, ownership, redeployment-persistence and synthetic-data cleanup checks. The actual owner's account has not been created and its private invitation remains unconsumed. See [release verification](docs/RELEASE_VERIFICATION.md) and [free hosting limits](docs/FREE_HOSTING_PLAN.md).
+Current hosting: **Render Free + Supabase Free private PostgreSQL** (the v3 redesign and MQW 90 on this branch are **not deployed**), with no persistent Render disk. Application commit `35aac55` reached Live and passed hosted HTTPS, ownership, redeployment-persistence and synthetic-data cleanup checks. The actual owner's account has not been created and its private invitation remains unconsumed. See [release verification](docs/RELEASE_VERIFICATION.md) and [free hosting limits](docs/FREE_HOSTING_PLAN.md).
 
 Arabic-first private learning application. Next.js 16, React 19, TypeScript and Node.js 24, with asynchronous repositories for local SQLite or private PostgreSQL. Email/password authentication remains the application's owner-only cookie/session system; PostgreSQL mode does not switch to Supabase Auth.
 
@@ -28,6 +28,8 @@ With no database configuration, development uses SQLite under `data/`. Cloud mod
 - Deterministic evidence-linked factual insights, dismissal/inaccuracy feedback and personalization controls. No psychological profiling.
 - Password-confirmed streaming JSON export including original audio encoded as base64 and historical palace snapshots. SQLite account deletion uses durable file-cleanup retry; PostgreSQL deletes owned audio/records through database cascades.
 - Mobile/desktop RTL shell, keyboard/tap alternatives, reduced motion, safe-area navigation and installable PWA assets.
+- **v3 Icy-Sapphire identity** (diamond white, chrome silver, ink black, icy sapphire; no purple): Alexandria headings, IBM Plex Sans Arabic body, glossy primary actions. See [design system](docs/DESIGN_SYSTEM.md).
+- **MQW 90 — My Evolution** (`/evolution`, entered from Today and My Space, no sixth tab): editable 90-day cycle with phases, Daily Compass, skin and scalp/beard logs with private photo comparison, supplement schedules with taken/skipped/postponed history, PPL templates and set logging, opt-in wellbeing, life balance and weekly review, factual cycle report. Tracking only; no doses, protocols or diagnoses. See [MQW 90](docs/MQW90.md). Structured data needs no schema migration. Private photos work in local/SQLite mode and are disabled in cloud mode until a proposed migration is approved.
 
 ## Verification
 
@@ -39,7 +41,7 @@ npm run test:e2e
 npm run build
 ```
 
-Recorded local regression evidence: **38/38 SQLite/async-repository tests, 9/9 Chromium browser journeys, one dedicated cache-reproduction browser check, TypeScript and the corrected production build passed**. The 38-test suite includes 18 fresh-process cold SQLite initialization. These checks cover their recorded phases; physical-device behavior is not certified. Automated axe reports remain bounded to the screens tested.
+Recorded local regression evidence (v3 branch, 2026-11-19): **48/48 SQLite/async-repository tests (38 existing + 10 MQW 90), 11/11 Chromium browser journeys (9 existing + 2 MQW 90, including axe on 8 MQW 90 screens and 390px overflow checks), TypeScript and the production build passed**. The earlier 38/9 evidence below refers to the deployed commit. The 38-test suite includes 18 fresh-process cold SQLite initialization. These checks cover their recorded phases; physical-device behavior is not certified. Automated axe reports remain bounded to the screens tested.
 
 The private PostgreSQL template passed **45 role/RLS/ownership/cascade checks** in isolated PGlite PostgreSQL. An additional **real local PostgreSQL 17.12 wire/TLS smoke test passed** using a restricted `mqw_app` role, verified CA/SAN, and synthetic loopback-only data. It covered concurrent lesson start/submission deduplication, lessons/reviews, a private five-locus palace trial with reveal/rating, A/B isolation and owner-context reset, 1 MiB + 5 byte audio playback/export, rollback, and password-confirmed cascading deletion. Its temporary server, data and credentials were removed. This is application-adapter evidence against local PostgreSQL, not proof of a Supabase or Render application connection.
 

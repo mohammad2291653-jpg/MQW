@@ -1,32 +1,32 @@
 [
   {
     "route": "/today",
-    "checkedAt": "2026-11-18T14:00:31.035Z",
+    "checkedAt": "2026-11-19T20:35:47.040Z",
     "violations": []
   },
   {
     "route": "/learn",
-    "checkedAt": "2026-11-18T14:00:32.244Z",
+    "checkedAt": "2026-11-19T20:35:47.881Z",
     "violations": []
   },
   {
     "route": "/palace",
-    "checkedAt": "2026-11-18T14:00:33.584Z",
+    "checkedAt": "2026-11-19T20:35:48.768Z",
     "violations": []
   },
   {
     "route": "/space",
-    "checkedAt": "2026-11-18T14:00:34.732Z",
+    "checkedAt": "2026-11-19T20:35:49.557Z",
     "violations": []
   },
   {
     "route": "/progress",
-    "checkedAt": "2026-11-18T14:00:35.903Z",
+    "checkedAt": "2026-11-19T20:35:50.390Z",
     "violations": []
   },
   {
     "route": "/settings/privacy",
-    "checkedAt": "2026-11-18T14:00:37.140Z",
+    "checkedAt": "2026-11-19T20:35:51.243Z",
     "violations": []
   }
 ]
